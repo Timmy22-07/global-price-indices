@@ -1,71 +1,66 @@
-# core/numbeo_loader.py – v2025-07-07 d
-# ------------------------------------------------------------
-# Loader robuste pour la base Numbeo (.db)
-# • Liste les tables via sqlite3.Cursor   (pas de pandas.read_sql)
-# • Ouvre la base en lecture-seule         =>   ?mode=ro
-# • Colonne "name" = identifiant de région
-# ------------------------------------------------------------
+# core/numbeo_loader.py – v2025‑07‑07 fixed
+# ---------------------------------------------------------------------
+# Loader adapté au format réel du fichier Numbeo (nommé « name »)
+# ✅ Utilise « name » comme identifiant de région
+# ✅ Exclut les colonnes inutiles (« id_city », « status », etc.)
+# ✅ Utilisé par numbeo_block.py
+# ---------------------------------------------------------------------
+
 from pathlib import Path
 import sqlite3
 import pandas as pd
+import streamlit as st
 
 DB_PATH = Path("data/raw/numbeo/numbeo.db")
+FALLBACK_CSV = Path("data/raw/numbeo/numbeo_fallback.csv")  # fallback optionnel
 
+# ------------------------------------------------------------------ #
+# 1. Chargement (DB ou fallback CSV)                                 #
+# ------------------------------------------------------------------ #
 
-# ---------- 1. Chargement complet -----------------------------------
+@st.cache_data(show_spinner=False)
 def load_numbeo_data(db_path: Path = DB_PATH) -> pd.DataFrame:
-    """
-    Retourne la table « cities » (ou première table utilisateur)
-    sous forme de DataFrame.
-    """
-    if not db_path.exists():
-        raise FileNotFoundError(f"Numbeo DB not found at {db_path}")
+    """Charge les données de Numbeo (nommée 'name')."""
+    if db_path.exists():
+        try:
+            with sqlite3.connect(db_path) as conn:
+                tables = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table';", conn)["name"].tolist()
+                if len(tables) == 0:
+                    raise ValueError("Aucune table trouvée dans la base de données.")
+                df = pd.read_sql(f"SELECT * FROM {tables[0]};", conn)  # prend la 1re table trouvée
+                df.columns = df.columns.str.strip()
+                return df
+        except Exception as e:
+            st.warning(f"⚠️ Erreur lecture DB Numbeo ({e}) – tentative CSV…")
 
-    # Connexion en lecture-seule (= pas de lock gênant sous Streamlit)
-    uri = f"file:{db_path.as_posix()}?mode=ro"
-    with sqlite3.connect(uri, uri=True) as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        tables = [row[0] for row in cur.fetchall()]
+    if FALLBACK_CSV.exists():
+        st.info("Chargement du fichier CSV de secours pour Numbeo…")
+        return pd.read_csv(FALLBACK_CSV)
 
-        # On prend « cities » si elle existe, sinon la 1ʳᵉ table hors sqlite_*
-        table = next((t for t in tables if t.lower() == "cities"), None) \
-            or next((t for t in tables if not t.startswith("sqlite_")), None)
+    raise FileNotFoundError("Aucune source valide pour les données Numbeo (DB ou CSV).")
 
-        if table is None:
-            raise ValueError(f"No suitable table found in {db_path}. Tables: {tables}")
+# ------------------------------------------------------------------ #
+# 2. Sélecteurs : régions + variables                                #
+# ------------------------------------------------------------------ #
 
-        # Lecture de la table via pandas
-        df = pd.read_sql_query(f"SELECT * FROM {table};", conn)
-
-    df.columns = df.columns.str.strip()
-    return df
-
-
-# ---------- 2. Helpers ----------------------------------------------
-def get_region_options(df: pd.DataFrame) -> list[str]:
+def get_city_options(df: pd.DataFrame) -> list[str]:
     if "name" not in df.columns:
-        raise ValueError("'name' column not found in Numbeo dataset.")
-    return sorted(df["name"].dropna().unique())
-
+        raise ValueError("La colonne 'name' est absente des données Numbeo.")
+    return sorted(df["name"].dropna().astype(str).str.strip().unique())
 
 def get_variable_options(df: pd.DataFrame) -> list[str]:
     exclude = {"id_city", "name", "status"}
-    return [c for c in df.columns if c not in exclude]
+    return [col for col in df.columns if col not in exclude]
 
+# ------------------------------------------------------------------ #
+# 3. Filtrage                                                        #
+# ------------------------------------------------------------------ #
 
-# ---------- 3. Filtrage ----------------------------------------------
-def filter_numbeo_data(
-    df: pd.DataFrame,
-    regions: list[str] | None,
-    variables: list[str] | None,
-) -> pd.DataFrame:
-    """Filtre sur régions (None = toutes) + variables choisies."""
-    if regions:
-        df = df[df["name"].isin(regions)].copy()
-
-    if variables:
-        keep = ["name", "status"] + variables if "status" in df.columns else ["name"] + variables
-        df = df[keep]
-
-    return df.reset_index(drop=True)
+def filter_numbeo_data(df: pd.DataFrame, regions: list[str], variables: list[str]) -> pd.DataFrame:
+    if "name" not in df.columns:
+        raise ValueError("Colonne 'name' introuvable.")
+    if not regions:
+        regions = df["name"].dropna().unique()
+    filtered = df[df["name"].isin(regions)].copy()
+    cols = ["name"] + (["status"] if "status" in df.columns else []) + variables
+    return filtered[cols].reset_index(drop=True)
