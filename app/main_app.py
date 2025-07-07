@@ -19,7 +19,7 @@ sys.path.append(os.path.abspath(os.path.join(Path(__file__).parent, "..")))
 st.set_page_config(page_title="Global Price Indices", layout="wide")
 st.title("🌐 Global Price Indices")
 
-# ──────────────── Import du Welcome tab (défini dans numbeo_loader) ── #
+# ──────────────── Import du Welcome tab ──────────────── #
 from core.welcome import display_welcome_tab
 
 # Affiche l'onglet d'accueil avant toute navigation
