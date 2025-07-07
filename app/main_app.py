@@ -1,13 +1,11 @@
-# app/main_app.py – v2025‑07‑06h4 (with Welcome tab)
+# app/main_app.py – v2025‑07‑07 (navigation avec onglet Welcome)
 # ---------------------------------------------------------------------
-# ✅ Suppression du préchargement massif en mémoire
-# ✅ Chargement paresseux (lazy loading) selon la source sélectionnée
-# ✅ Utilisation de @st.cache_data pour alléger la RAM
-# ✅ Ajout d’un onglet Accueil avant la navigation
+# ✅ Onglet d’accueil intégré directement dans la navigation latérale
+# ✅ Ne s'affiche qu'à la sélection explicite "🏠 Welcome"
+# ✅ Autres blocs uniquement quand une source réelle est sélectionnée
 # ---------------------------------------------------------------------
 
 from __future__ import annotations
-
 import os, sys
 from pathlib import Path
 import streamlit as st
@@ -19,13 +17,8 @@ sys.path.append(os.path.abspath(os.path.join(Path(__file__).parent, "..")))
 st.set_page_config(page_title="Global Price Indices", layout="wide")
 st.title("🌐 Global Price Indices")
 
-# ──────────────── Import du Welcome tab ──────────────── #
+# ──────────────── Imports bloc Accueil + Data ──────────────── #
 from core.welcome import display_welcome_tab
-
-# Affiche l'onglet d'accueil avant toute navigation
-display_welcome_tab()
-
-# ──────────────── Config navigation + imports ──────────────── #
 from core.source_config import CATEGORY_TO_SOURCES
 
 from core.big_mac import load_data as load_big_mac, get_lookup_table, filter_data as filter_big_mac
@@ -47,14 +40,7 @@ from core.world_bank_icp_loader import (
     filter_icp_data,
 )
 
-# ──────────────── Navigation latérale ──────────────── #
-st.sidebar.header("🌐 Navigation")
-category = st.sidebar.radio("Category", list(CATEGORY_TO_SOURCES.keys()))
-source = st.sidebar.selectbox("Source", CATEGORY_TO_SOURCES[category])
-
-st.subheader(f"📊 {source}")
-
-# ──────────────── Bloc de contenu par source ──────────────── #
+# ──────────────── Blocs interface ──────────────── #
 from interface_blocks.big_mac_block import display_big_mac_block
 from interface_blocks.bis_block import display_bis_block
 from interface_blocks.cpi_block import display_wb_cpi_block
@@ -62,6 +48,21 @@ from interface_blocks.icp_block import display_wb_icp_block
 from interface_blocks.penn_block import display_penn_block
 from interface_blocks.numbeo_block import display_numbeo_block
 
+# ──────────────── Navigation latérale (avec Welcome) ──────────────── #
+MENU = ["🏠 Welcome"] + list(CATEGORY_TO_SOURCES.keys())
+st.sidebar.header("🌐 Navigation")
+category = st.sidebar.radio("Category", MENU)
+
+# Cas particulier : Accueil
+if category == "🏠 Welcome":
+    display_welcome_tab()
+    st.stop()
+
+# Sinon, poursuivre avec les sources
+source = st.sidebar.selectbox("Source", CATEGORY_TO_SOURCES[category])
+st.subheader(f"📊 {source}")
+
+# ──────────────── Bloc de contenu par source ──────────────── #
 with st.spinner("Chargement des données..."):
     if source == "The Economist – Big Mac Index":
         display_big_mac_block()
