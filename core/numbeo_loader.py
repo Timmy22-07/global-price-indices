@@ -15,7 +15,7 @@ import streamlit as st
 ROOT_DIR = Path(__file__).resolve().parent.parent        #  …/core/..
 DATA_DIR = ROOT_DIR / "data" / "raw" / "numbeo"
 
-DB_PATH       = DATA_DIR / "numbeo"
+DB_PATH       = DATA_DIR / "numbeo.db"
 FALLBACK_CSV  = DATA_DIR / "numbeo_fallback.csv"         # optionnel
 
 # ── Chargement (DB puis évent. CSV) ──────────────────────────
