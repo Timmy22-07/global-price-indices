@@ -1,7 +1,7 @@
-# app/main_app.py – v2025‑07‑07 (navigation avec onglet Welcome)
+# app/main_app.py – v2025‑07‑07 (navigation avec onglet Accueil)
 # ---------------------------------------------------------------------
-# ✅ Onglet d’accueil intégré directement dans la navigation latérale
-# ✅ Ne s'affiche qu'à la sélection explicite "🏠 Welcome"
+# ✅ Onglet d’accueil intégré dans la navigation, AVANT les catégories
+# ✅ Ne s'affiche qu'à la sélection explicite "🏠 Accueil"
 # ✅ Autres blocs uniquement quand une source réelle est sélectionnée
 # ---------------------------------------------------------------------
 
@@ -48,17 +48,14 @@ from interface_blocks.icp_block import display_wb_icp_block
 from interface_blocks.penn_block import display_penn_block
 from interface_blocks.numbeo_block import display_numbeo_block
 
-# ──────────────── Navigation latérale (avec Welcome) ──────────────── #
-MENU = ["🏠 Welcome"] + list(CATEGORY_TO_SOURCES.keys())
+# ──────────────── Onglet Accueil (hors catégorie) ──────────────── #
 st.sidebar.header("🌐 Navigation")
-category = st.sidebar.radio("Category", MENU)
-
-# Cas particulier : Accueil
-if category == "🏠 Welcome":
+if st.sidebar.radio("Navigation", ["🏠 Accueil", "Explorer les données"], horizontal=False) == "🏠 Accueil":
     display_welcome_tab()
     st.stop()
 
-# Sinon, poursuivre avec les sources
+# ──────────────── Navigation latérale par catégorie ──────────────── #
+category = st.sidebar.radio("Category", list(CATEGORY_TO_SOURCES.keys()))
 source = st.sidebar.selectbox("Source", CATEGORY_TO_SOURCES[category])
 st.subheader(f"📊 {source}")
 
@@ -74,6 +71,9 @@ with st.spinner("Chargement des données..."):
         display_wb_icp_block()
     elif source == "Penn World Table":
         display_penn_block()
+    elif source == "Numbeo – Cost of Living + PPP":
+        display_numbeo_block()
+
     elif source == "Numbeo – Cost of Living + PPP":
         display_numbeo_block()
 
