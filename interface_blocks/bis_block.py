@@ -1,6 +1,6 @@
-# interface_blocks/bis_block.py – v1 (externalized)
+# interface_blocks/bis_block.py – v2025-07-08 corrigé
 # ---------------------------------------------------------------------
-# • Interface block for BIS REER, with caching and loading spinner.
+# • Bloc interface BIS – REER, compatible fusion intelligente
 # ---------------------------------------------------------------------
 
 import streamlit as st
@@ -16,40 +16,45 @@ def display_bis_block():
         df_bis = load_bis_reer_cached()
         opts = get_filter_options(df_bis)
 
+    # Interface de sélection (métadonnées)
     c1, c2, c3 = st.columns(3)
-    ref = c1.selectbox("Reference Area", opts["reference_area"])
-    freq = c2.selectbox("Frequency", opts["frequency"])
-    type_ = c3.selectbox("Type", opts["type"])
+    ref = c1.selectbox("Reference Area", opts["Reference area"])
+    freq = c2.selectbox("Frequency", opts["Frequency"])
+    type_ = c3.selectbox("Type", opts["Type"])
 
     c4, c5 = st.columns(2)
-    basket = c4.selectbox("Basket", opts["basket"])
-    unit = c5.selectbox("Unit", opts["unit"])
+    basket = c4.selectbox("Basket", opts["Basket"])
+    unit = c5.selectbox("Unit", opts["Unit"])
 
-    years = ["All"] + sorted(df_bis["date"].dt.year.dropna().unique().astype(int))
-    year = st.selectbox("Year", years)
+    # Sélection des colonnes de dates disponibles
+    date_cols = [c for c in df_bis.columns if c not in [
+        "Dataflow ID", "Timeseries Key", "Frequency", "Type", "Basket", "Reference area", "Unit"
+    ]]
+    selected_dates = st.multiselect("Dates to show", options=date_cols, default=date_cols[:3])
 
+    # Filtrage selon les métadonnées
     st.markdown("#### 2 – Results")
-    filtered = filter_bis_data(
-        df_bis,
-        reference_area=ref,
-        frequency=freq,
-        type_=type_,
-        basket=basket,
-        unit=unit,
-        year=None if year == "All" else int(year)
-    )
+    filters = {
+        "Reference area": [ref],
+        "Frequency": [freq],
+        "Type": [type_],
+        "Basket": [basket],
+        "Unit": [unit]
+    }
 
-    filtered = filtered.reset_index(drop=True)
-    filtered.index += 1
-    filtered.index.name = "Numéro de ligne"
+    filtered = filter_bis_data(df_bis, filters)
 
-    st.success(f"{len(filtered)} rows selected.")
+    # Affichage avec colonnes sélectionnées
+    meta_cols = ["Reference area", "Frequency", "Type", "Basket", "Unit"]
+    to_show = filtered[meta_cols + selected_dates].copy()
+
+    st.success(f"{len(to_show)} rows selected.")
     show_all = st.checkbox("Show all rows", value=False)
-    st.dataframe(filtered if show_all else filtered.head(10), use_container_width=True)
+    st.dataframe(to_show if show_all else to_show.head(10), use_container_width=True)
 
     st.download_button(
         "Download CSV",
-        filtered.to_csv(index=False).encode(),
-        file_name=f"bis_reer_{ref}.csv",
+        to_show.to_csv(index=False).encode(),
+        file_name=f"bis_reer_{ref.replace(' ', '_')}.csv",
         mime="text/csv"
     )
