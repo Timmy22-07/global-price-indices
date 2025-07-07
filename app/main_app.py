@@ -1,8 +1,9 @@
-# app/main_app.py – v2025‑07‑06h2 (corrected preload & UX flow)
+# app/main_app.py – v2025‑07‑06h3 (optimized memory & lazy loading)
 # ---------------------------------------------------------------------
-# ✔️ Preload non-bloquant avec spinner
-# ✔️ Suppression des imports en double
-# ✔️ Message de confirmation de chargement
+# ✅ Suppression du préchargement massif en mémoire
+# ✅ Chargement paresseux (lazy loading) selon la source sélectionnée
+# ✅ Utilisation de @st.cache_data pour alléger la RAM
+# ✅ UX conservée avec spinner et messages clairs
 # ---------------------------------------------------------------------
 
 from __future__ import annotations
@@ -16,27 +17,7 @@ sys.path.append(os.path.abspath(os.path.join(Path(__file__).parent, "..")))
 
 # ──────────────── Configuration de la page ──────────────── #
 st.set_page_config(page_title="Global Price Indices", layout="wide")
-
-with st.spinner("⏳ Initialisation des données..."):
-    st.title("🌐 Global Price Indices")
-
-    # Étape 1 – Préchargement des données (1 seule fois)
-    if "preload_done" not in st.session_state:
-        from core.big_mac import load_data as load_big_mac
-        from core.bis_loader import load_bis_reer_data
-        from core.numbeo_loader import load_numbeo_data
-        from core.penn_loader import load_penn_data
-        from core.world_bank_cpi_loader import load_wb_cpi_data
-        from core.world_bank_icp_loader import load_icp_data
-
-        load_big_mac()
-        load_bis_reer_data()
-        load_numbeo_data()
-        load_penn_data()
-        load_wb_cpi_data()
-        load_icp_data()
-
-        st.session_state["preload_done"] = True
+st.title("🌐 Global Price Indices")
 
 # ──────────────── Config navigation + imports ──────────────── #
 from core.source_config import CATEGORY_TO_SOURCES
@@ -96,18 +77,19 @@ from interface_blocks.icp_block import display_wb_icp_block
 from interface_blocks.penn_block import display_penn_block
 from interface_blocks.numbeo_block import display_numbeo_block
 
-if source == "The Economist – Big Mac Index":
-    display_big_mac_block()
-elif source == "BIS – Real Effective Exchange Rates (REER)":
-    display_bis_block()
-elif source == "World Bank – CPI (Consumer Price Index)":
-    display_wb_cpi_block()
-elif source == "World Bank – ICP Database":
-    display_wb_icp_block()
-elif source == "Penn World Table":
-    display_penn_block()
-elif source == "Numbeo – Cost of Living + PPP":
-    display_numbeo_block()
+with st.spinner("Chargement des données..."):
+    if source == "The Economist – Big Mac Index":
+        display_big_mac_block()
+    elif source == "BIS – Real Effective Exchange Rates (REER)":
+        display_bis_block()
+    elif source == "World Bank – CPI (Consumer Price Index)":
+        display_wb_cpi_block()
+    elif source == "World Bank – ICP Database":
+        display_wb_icp_block()
+    elif source == "Penn World Table":
+        display_penn_block()
+    elif source == "Numbeo – Cost of Living + PPP":
+        display_numbeo_block()
 
 # ──────────────── Message de confirmation ──────────────── #
 st.info("✅ Application chargée avec succès.")
