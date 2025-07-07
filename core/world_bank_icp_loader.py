@@ -1,4 +1,4 @@
-# core/world_bank_icp_loader.py – v2025-07-08
+# core/world_bank_icp_loader.py – v2025-07-08 FIXED
 # ---------------------------------------------------------------
 # Loader and filter functions for World Bank – ICP Excel dataset
 # ---------------------------------------------------------------
@@ -23,11 +23,17 @@ def load_icp_data():
     df = pd.read_excel(ICP_PATH, skiprows=0)
     df.columns = df.columns.str.strip()
 
-    # Convert all columns to snake_case
+    # Convert all non-numeric column names to snake_case
     df.columns = [to_snake_case(col) if not isinstance(col, int) else col for col in df.columns]
 
-    # Rename year columns (e.g. '2011 [YR2011]' → 2011)
+    # Rename year columns: "2011 [YR2011]" → 2011
     df.rename(columns={c: int(c[:4]) for c in df.columns if isinstance(c, str) and c[:4].isdigit()}, inplace=True)
+
+    # ✅ Fix: separate metadata and year columns to avoid mixed-type sorting
+    meta_cols = [col for col in df.columns if not isinstance(col, int)]
+    year_cols = sorted([col for col in df.columns if isinstance(col, int)])
+    df = df[meta_cols + year_cols]
+
     return df
 
 # Get unique country names
