@@ -10,45 +10,44 @@ if not db_path.exists():
     raise FileNotFoundError(f"Fichier introuvable : {db_path}")
 
 # 🔌 Connexion à la base
-conn = sqlite3.connect(db_path)
+with sqlite3.connect(db_path) as conn:
+    # 📋 Liste des tables
+    tables_query = "SELECT name FROM sqlite_master WHERE type='table';"
+    tables_df = pd.read_sql(tables_query, conn)
+    table_names = tables_df["name"].tolist()
 
-# 📋 Liste des tables
-tables_query = "SELECT name FROM sqlite_master WHERE type='table';"
-tables = pd.read_sql(tables_query, conn)
+    print("📂 Tables trouvées dans la base Numbeo :")
+    print(table_names)
 
-print("📂 Tables trouvées dans la base Numbeo :")
-print(tables)
+    # 🧪 Si la table 'cities' existe
+    if "cities" in table_names:
+        print("\n📊 Lecture de la table 'cities'...")
 
-# 🧪 Aperçu de la première table (si elle existe)
-if not tables.empty:
-    first_table = tables.iloc[0, 0]
-    print(f"\n🔍 Aperçu de la table '{first_table}':")
-    preview = pd.read_sql(f"SELECT * FROM {first_table} LIMIT 10;", conn)
-    print(preview)
+        # Charger toute la table dans un DataFrame
+        df = pd.read_sql("SELECT * FROM cities", conn)
 
-# 🔐 Fermeture
-conn.close()
-# Affichage complet des noms de table
-print("\n📦 Liste brute des tables (debug):")
-print(tables["name"].tolist())
+        # 🧱 Colonnes disponibles
+        print("\n🔎 Colonnes :", df.columns.tolist())
 
-import sqlite3
+        # 👁️ Aperçu
+        print("\n🧾 Aperçu (10 premières lignes) :")
+        print(df.head(10))
 
-db_path = "data/raw/numbeo/numbeo.db"
-conn = sqlite3.connect(db_path)
-cursor = conn.cursor()
+        # 📏 Taille
+        print(f"\n📐 Dimensions : {len(df)} lignes × {len(df.columns)} colonnes")
 
-# Combien de lignes ?
-cursor.execute("SELECT COUNT(*) FROM cities;")
-nb_villes = cursor.fetchone()[0]
-print(f"🌍 Nombre total de villes dans la base : {nb_villes}")
+        # 💾 Export CSV
+        output_path = Path("data/processed/numbeo_full_export.csv")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(output_path, index=False)
+        print(f"\n✅ Données exportées : {output_path}")
 
-# Afficher la liste des villes (limite 100 pour pas tout afficher d'un coup)
-cursor.execute("SELECT name, status FROM cities LIMIT 100;")
-villes = cursor.fetchall()
-
-print("\n🧾 Quelques villes dans la base :")
-for nom, statut in villes:
-    print(f"• {nom} ({statut})")
-
-conn.close()
+        # 🌍 Aperçu des noms de villes
+        if "name" in df.columns and "status" in df.columns:
+            print("\n🏙️ Liste de quelques villes (max 100) :")
+            for _, row in df[["name", "status"]].head(100).iterrows():
+                print(f"• {row['name']} ({row['status']})")
+        else:
+            print("⚠️ Colonnes 'name' ou 'status' non trouvées.")
+    else:
+        print("❌ Table 'cities' non trouvée dans la base.")

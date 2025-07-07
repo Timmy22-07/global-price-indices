@@ -1,60 +1,81 @@
 # core/numbeo_loader.py
 # ---------------------------------------------------------------------
 # Utilities for loading and filtering data from the Numbeo SQLite DB
+# Adapted to the current structure of the **cities** table
 # ---------------------------------------------------------------------
 
+from pathlib import Path
 import sqlite3
 import pandas as pd
-from pathlib import Path
 import streamlit as st
 
-DB_PATH = Path("data/raw/numbeo/numbeo.db")  # ← adapte ce chemin si besoin
+# 📍 Path to the Numbeo SQLite file
+DB_PATH = Path("data/raw/numbeo/numbeo.db")
+
+# ------------------------------------------------------------------ #
+# 1. Load full table                                                  #
+# ------------------------------------------------------------------ #
 
 def load_numbeo_data(db_path: Path = DB_PATH) -> pd.DataFrame:
-    """
-    Load the full Numbeo data from a SQLite .db file into a DataFrame.
-    Assumes a table named 'cost_of_living' is present.
+    """Load the **cities** table from Numbeo DB into a DataFrame."""
+    if not db_path.exists():
+        raise FileNotFoundError(f"Numbeo DB not found at {db_path}")
 
-    Returns:
-        pd.DataFrame: Complete dataset
-    """
-    conn = sqlite3.connect(db_path)
-    # auto-detect first table (assumed to be 'cost_of_living')
-    table_name = pd.read_sql_query(
-        "SELECT name FROM sqlite_master WHERE type='table' LIMIT 1;", conn
-    ).iloc[0, 0]
+    with sqlite3.connect(db_path) as conn:
+        # Ensure the 'cities' table exists
+        tables = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table';", conn)["name"].tolist()
+        if "cities" not in tables:
+            raise ValueError(f"Table 'cities' not found in {db_path}. Tables available: {tables}")
 
-    df = pd.read_sql_query(f"SELECT * FROM {table_name};", conn)
-    conn.close()
+        df = pd.read_sql("SELECT * FROM cities;", conn)
+
+    # Strip whitespace from column names
+    df.columns = df.columns.str.strip()
     return df
 
+# ------------------------------------------------------------------ #
+# 2. Helper – city selector                                           #
+# ------------------------------------------------------------------ #
 
-@st.cache_data
-def get_city_options(df: pd.DataFrame) -> list:
-    """
-    Extracts unique cities for filtering dropdown.
+@st.cache_data(show_spinner=False)
+def get_city_options(df: pd.DataFrame) -> list[str]:
+    """Return sorted unique city names for dropdown."""
+    for col in ["city", "name", "city_name", "location"]:
+        if col in df.columns:
+            return sorted(df[col].dropna().unique())
+    raise ValueError(
+        "No city-like column found in Numbeo dataset. Columns present: "
+        f"{df.columns.tolist()}"
+    )
 
-    Args:
-        df (pd.DataFrame): Loaded Numbeo data
+# ------------------------------------------------------------------ #
+# 3. Helper – variable selector                                       #
+# ------------------------------------------------------------------ #
 
-    Returns:
-        list: Sorted list of cities
-    """
-    if "city" not in df.columns:
-        raise ValueError("No 'city' column found in Numbeo database.")
-    return sorted(df["city"].dropna().unique())
+def get_variable_options(df: pd.DataFrame) -> list[str]:
+    """Return numeric/cost variables excluding identifiers."""
+    id_cols = {"id_city", "name", "city", "city_name", "location", "status"}
+    return [c for c in df.columns if c not in id_cols]
 
+# ------------------------------------------------------------------ #
+# 4. Filter function                                                  #
+# ------------------------------------------------------------------ #
 
-def filter_numbeo_data(df: pd.DataFrame, city: str) -> pd.DataFrame:
-    """
-    Filter Numbeo data by selected city.
+def filter_numbeo_data(
+    df: pd.DataFrame,
+    city: str,
+    variables: list[str] | None = None,
+) -> pd.DataFrame:
+    """Return rows for a given city and subset of variables."""
+    # Detect the city column again (robust)
+    city_col = next((c for c in ["city", "name", "city_name", "location"] if c in df.columns), None)
+    if city_col is None:
+        raise ValueError("No city column detected after loading Numbeo data.")
 
-    Args:
-        df (pd.DataFrame): Full Numbeo dataset
-        city (str): Selected city
+    subset = df[df[city_col] == city].copy()
 
-    Returns:
-        pd.DataFrame: Filtered data
-    """
-    return df[df["city"] == city].copy()
+    if variables:  # keep only requested variables + identifier columns
+        keep_cols = [city_col, "status"] + variables if "status" in df.columns else [city_col] + variables
+        subset = subset[keep_cols]
 
+    return subset.reset_index(drop=True)
