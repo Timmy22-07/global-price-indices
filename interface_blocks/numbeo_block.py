@@ -1,82 +1,73 @@
-# interface_blocks/numbeo_block.py – v3
-# ---------------------------------------------------------------------
-# • Bloc d’interface pour Numbeo – Cost of Living + PPP
-# • Ajout : « Select all » pour la région ET les variables
-# • Ajout : bouton « Show all columns » (sinon aperçu limité à 10)
-# • Libellé du bouton de téléchargement changé → « Download CSV »
-# ---------------------------------------------------------------------
-
+# interface_blocks/numbeo_block.py – v2025-07-07 c
+# ------------------------------------------------------------
+# • « Select all » pour régions ET variables
+# • Aperçu limité à 10 colonnes  (+ Show all)
+# • Bouton de DL   →  « Download CSV »
+# ------------------------------------------------------------
 from __future__ import annotations
 import streamlit as st
+
 from core.numbeo_loader import (
     load_numbeo_data,
-    get_city_options,
+    get_region_options,
     get_variable_options,
     filter_numbeo_data,
 )
 
-# ------------------------------------------------------------------ #
-# Chargement en cache                                                #
-# ------------------------------------------------------------------ #
+# -------- Cache ------------------------------------------------------
 @st.cache_data(show_spinner=False)
 def _load_cached():
     return load_numbeo_data()
 
-# ------------------------------------------------------------------ #
-# Bloc principal                                                     #
-# ------------------------------------------------------------------ #
 
+# -------- Bloc principal --------------------------------------------
 def display_numbeo_block() -> None:
-    """Interface complète Numbeo (région + variables + téléchargements)."""
+    st.markdown("#### 1 – Select filters")
 
-    st.markdown("#### 1 – Select filters")
+    # ---- Chargement unique (cache) ----
+    with st.spinner("🏙️ Loading Numbeo…"):
+        df_full = _load_cached()
 
-    with st.spinner("🏙️ Loading Numbeo data…"):
-        df_all = _load_cached()
+    regions_all = get_region_options(df_full)
+    vars_all = get_variable_options(df_full)
 
-    # ---------------- Region selector -----------------
-    city_options = get_city_options(df_all)
+    # ---- Sélecteur de régions --------------------------------------
+    col_reg, col_reg_all = st.columns([5, 1])
+    with col_reg:
+        regions_sel = st.multiselect("Region (city, country)", regions_all)
+    with col_reg_all:
+        if st.checkbox("Select all", key="numbeo_sel_all_regions"):
+            regions_sel = regions_all.copy()
 
-    col_r, col_sa = st.columns([4, 1])
-    with col_r:
-        city_selected = st.selectbox("Region (city, country)", city_options)
-    with col_sa:
-        select_all_city = st.checkbox("Select all", key="numbeo_select_all_city")
-        if select_all_city:
-            city_selected = None  # signal "all"
+    # ---- Sélecteur de variables ------------------------------------
+    col_var, col_var_all = st.columns([5, 1])
+    with col_var:
+        vars_sel = st.multiselect("Variables", vars_all, default=vars_all[:5])
+    with col_var_all:
+        if st.checkbox("Select all", key="numbeo_sel_all_vars"):
+            vars_sel = vars_all.copy()
 
-    # --------------- Variable selector ----------------
-    variables_all = get_variable_options(df_all)
+    # ---- Filtrage ---------------------------------------------------
+    if not vars_sel:  # au moins une variable
+        st.warning("Choose at least one variable.")
+        return
 
-    col_v, col_vs = st.columns([4, 1])
-    with col_v:
-        vars_selected = st.multiselect("Variables", variables_all, default=variables_all[:5])
-    with col_vs:
-        if st.checkbox("Select all", key="numbeo_select_all_vars"):
-            vars_selected = variables_all.copy()
-
-    # --------------- Filtrage -------------------------
-    filtered = filter_numbeo_data(df_all, city_selected, vars_selected)
-
-    # --------------- Affichage tableau ----------------
+    filtered = filter_numbeo_data(df_full, regions_sel or None, vars_sel)
     st.success(f"{len(filtered)} rows selected.")
 
-    show_all_cols = st.checkbox("Show all columns", value=False, key="numbeo_show_all_cols")
+    # ---- Affichage (10 colonnes par défaut) ------------------------
+    show_all_cols = st.checkbox("Show all columns", value=False, key="numbeo_show_cols")
     if not show_all_cols and len(filtered.columns) > 10:
-        cols_to_display = filtered.columns[:10]
-        st.dataframe(filtered[cols_to_display], use_container_width=True)
-        st.caption("Showing first 10 columns – tick ‘Show all columns’ to view the full table.")
+        st.dataframe(filtered.iloc[:, :10], use_container_width=True)
+        st.caption("Showing first 10 columns. Tick the box above to view all.")
     else:
         st.dataframe(filtered, use_container_width=True)
 
-    # --------------- Téléchargement -------------------
+    # ---- Téléchargement --------------------------------------------
+    csv_data = filtered.to_csv(index=False).encode("utf-8")
     st.download_button(
-        label="Download CSV",
-        data=filtered.to_csv(index=False).encode("utf-8"),
+        "📥 Download CSV",
+        csv_data,
         file_name="numbeo_filtered.csv",
         mime="text/csv",
     )
-
-# ------------------------------------------------------------------ #
-# Fin                                                                #
-# ------------------------------------------------------------------ #
