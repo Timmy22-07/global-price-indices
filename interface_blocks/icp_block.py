@@ -1,9 +1,12 @@
-# interface_blocks/wb_icp_block.py – v1
+# interface_blocks/wb_icp_block.py – v2025-07-08 FIXED
 # ---------------------------------------------------------------------
 # • Interface block for World Bank – ICP, with cache and loading spinner.
+# • Correction des noms de colonnes sensibles à la casse
+# • Protection contre les erreurs de métadonnées
 # ---------------------------------------------------------------------
 
 import streamlit as st
+import pandas as pd
 from core.world_bank_icp_loader import (
     load_icp_data,
     get_country_options as get_icp_countries,
@@ -22,11 +25,22 @@ def display_wb_icp_block():
         df_icp = load_icp_cached()
         metadata = get_metadata_options(df_icp)
 
+        # Vérification des métadonnées
+        if not isinstance(metadata, pd.DataFrame):
+            st.error("❌ Metadata is not a valid DataFrame.")
+            st.stop()
+
+        required_cols = ["Classification Name", "Series Name"]
+        for col in required_cols:
+            if col not in metadata.columns:
+                st.error(f"❌ Missing column in metadata: {col}")
+                st.stop()
+
         c1, c2 = st.columns(2)
         country = c1.selectbox("Country", get_icp_countries(df_icp))
-        classification = c2.selectbox("Classification", metadata["Classification Name"])
+        classification = c2.selectbox("Classification", metadata["Classification Name"].unique())
 
-        series = st.selectbox("Series", metadata["series_name"])
+        series = st.selectbox("Series", metadata["Series Name"].unique())
         years = st.multiselect("Years (optional)", get_icp_years(df_icp))
 
         st.markdown("#### 2 – Results")
