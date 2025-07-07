@@ -19,12 +19,12 @@ def display_wb_icp_block():
         df_icp = load_icp_cached()
 
         # Sécurité : vérifie les colonnes nécessaires
-        required_cols = ["country_name", "classification_name", "Series Name"]
+        required_cols = ["country_name", "classification_name", "series_name"]
         for col in required_cols:
             if col not in df_icp.columns:
                 st.error(f"❌ Column '{col}' is missing from the dataset.")
                 st.dataframe(df_icp.head())
-                
+                st.stop()
 
         countries = sorted(df_icp["country_name"].dropna().unique())
         classifications = sorted(df_icp["classification_name"].dropna().unique())
