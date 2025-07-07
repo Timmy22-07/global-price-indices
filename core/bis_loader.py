@@ -1,65 +1,65 @@
-# core/numbeo_loader.py – v2025‑07‑07 robust
-# ---------------------------------------------------------------------
-# Robust loader for Numbeo SQLite DB (cities table)
-# • Gracefully handles missing/invalid DB files
-# • Provides get_city_options, get_variable_options, filter_numbeo_data
-# ---------------------------------------------------------------------
+# core/bis_loader.py
 
-from pathlib import Path
-import sqlite3
 import pandas as pd
-import streamlit as st
+from pathlib import Path
 
-DB_PATH = Path("data/raw/numbeo/numbeo.db")
-FALLBACK_CSV = Path("data/raw/numbeo/numbeo_fallback.csv")  # optional fallback
+def load_bis_data(data_dir: Path = Path("data/raw/bis")) -> pd.DataFrame:
+    """
+    Loads and processes all BIS REER Excel files from the given directory.
+    Returns a long-format DataFrame with clean structure.
+    """
+    # List all Excel files in the directory
+    files = sorted(data_dir.glob("*.xlsx"))
+    if not files:
+        raise FileNotFoundError(f"No Excel files found in {data_dir}")
 
-# ------------------------------------------------------------------ #
-# 1. Load data (DB → DataFrame)                                      #
-# ------------------------------------------------------------------ #
+    df_list = []
+    for file in files:
+        df = pd.read_excel(file)
 
-@st.cache_data(show_spinner=False)
-def load_numbeo_data(db_path: Path = DB_PATH) -> pd.DataFrame:
-    """Load cities table from SQLite DB. If it fails, try fallback CSV."""
-    if db_path.exists():
-        try:
-            with sqlite3.connect(db_path) as conn:
-                tables = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table';", conn)["name"].tolist()
-                if "cities" not in tables:
-                    raise ValueError(f"Table 'cities' not found. Tables available: {tables}")
-                df = pd.read_sql("SELECT * FROM cities;", conn)
-                df.columns = df.columns.str.strip()
-                return df
-        except Exception as e:
-            st.warning(f"⚠️ Failed to read SQLite DB ({e}). Trying fallback CSV…")
-    # Fallback
-    if FALLBACK_CSV.exists():
-        st.info("Loading fallback CSV for Numbeo data…")
-        return pd.read_csv(FALLBACK_CSV)
-    raise FileNotFoundError("No valid Numbeo dataset available (DB or CSV fallback).")
+        # Find date columns dynamically (typically start at col 8)
+        non_date_cols = [col for col in df.columns if not isinstance(col, pd.Timestamp)]
+        date_cols = [col for col in df.columns if isinstance(col, pd.Timestamp)]
 
-# ------------------------------------------------------------------ #
-# 2. Helpers                                                         #
-# ------------------------------------------------------------------ #
+        # Melt into long format
+        df_melted = df.melt(
+            id_vars=non_date_cols,
+            value_vars=date_cols,
+            var_name="Date",
+            value_name="Value"
+        )
 
-def get_city_options(df: pd.DataFrame) -> list[str]:
-    if "name" not in df.columns:
-        raise ValueError("Column 'name' missing from Numbeo data.")
-    return sorted(df["name"].dropna().astype(str).str.strip().unique())
+        df_list.append(df_melted)
 
-def get_variable_options(df: pd.DataFrame) -> list[str]:
-    exclude = {"id_city", "name", "status"}
-    return [c for c in df.columns if c not in exclude]
+    # Combine all years
+    full_df = pd.concat(df_list, ignore_index=True)
 
-# ------------------------------------------------------------------ #
-# 3. Filtering                                                       #
-# ------------------------------------------------------------------ #
+    # Clean column names for consistency
+    full_df.columns = [col.strip().replace(" ", "_").lower() for col in full_df.columns]
 
-def filter_numbeo_data(df: pd.DataFrame, regions: list[str], variables: list[str]) -> pd.DataFrame:
-    """Return filtered DataFrame for selected regions and variables."""
-    if "name" not in df.columns:
-        raise ValueError("Column 'name' missing from Numbeo data.")
-    if not regions:
-        regions = df["name"].dropna().unique()  # select all
-    subset = df[df["name"].isin(regions)].copy()
-    cols = ["name"] + ( ["status"] if "status" in df.columns else [] ) + variables
-    return subset[cols].reset_index(drop=True)
+    # Optional: convert date to string or keep as datetime depending on usage
+    full_df["date"] = pd.to_datetime(full_df["date"], errors="coerce")
+
+    return full_df
+
+
+def get_unique_filter_values(df: pd.DataFrame, cols: list[str]) -> dict:
+    """
+    Returns a dictionary mapping column names to unique sorted values (including 'All').
+    """
+    options = {}
+    for col in cols:
+        unique_vals = df[col].dropna().unique().tolist()
+        unique_vals = sorted(unique_vals)
+        options[col] = ["All"] + unique_vals
+    return options
+
+
+# Exemple d'utilisation (test local uniquement)
+if __name__ == "__main__":
+    df = load_bis_data()
+    filters = get_unique_filter_values(df, [
+        "reference_area", "frequency", "type", "basket", "unit"
+    ])
+    print(df.head())
+    print(filters)

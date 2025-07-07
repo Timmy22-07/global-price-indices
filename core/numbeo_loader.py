@@ -1,77 +1,88 @@
-# core/numbeo_loader.py – v2025-07-08 final
+# interface_blocks/numbeo_block.py – v2025-07-08 FINAL
 # ------------------------------------------------------------
-# Chargement intelligent d’un fichier Numbeo (.db ou CSV)
-# Détection automatique d’un fichier SQLite même sans extension
-# Helpers : get_city_options, get_variable_options, filter_numbeo_data
+# • Bloc interface pour les données Numbeo (base SQLite/table cities)
+# • Sélection de régions et de variables avec persistance
+# • Affichage des résultats (max 10 colonnes par défaut)
+# • Export des résultats filtrés en CSV
 # ------------------------------------------------------------
 
 from __future__ import annotations
-from pathlib import Path
-import sqlite3
-import pandas as pd
 import streamlit as st
 
-# ── Chemin vers le dossier contenant les données ─────────────
-DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "raw" / "numbeo"
-FALLBACK_CSV = DATA_DIR / "numbeo_fallback.csv"
+from core.numbeo_loader import (
+    load_numbeo_data,
+    get_city_options,
+    get_variable_options,
+    filter_numbeo_data,
+)
 
-# ── Détection automatique d’un fichier SQLite ────────────────
-def _find_numbeo_file() -> Path | None:
-    for f in DATA_DIR.iterdir():
-        if f.is_file() and f.suffix in {"", ".db"}:
-            try:
-                with f.open("rb") as fh:
-                    if fh.read(16) == b"SQLite format 3\x00":
-                        return f
-            except Exception:
-                continue
-    return None
-
-# ── Chargement principal des données ─────────────────────────
+# ─────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=False)
-def load_numbeo_data() -> pd.DataFrame:
-    db_file = _find_numbeo_file()
+def _load_cached_data():
+    return load_numbeo_data()
 
-    if db_file:
-        try:
-            with sqlite3.connect(db_file) as conn:
-                table_name = pd.read_sql(
-                    "SELECT name FROM sqlite_master WHERE type='table' LIMIT 1;", conn
-                )["name"].iat[0]
-                df = pd.read_sql(f"SELECT * FROM {table_name};", conn)
-                df.columns = df.columns.str.strip()
-                return df
-        except Exception as e:
-            st.warning(f"⚠️ Lecture impossible de {db_file.name} : {e}")
+# ─────────────────────────────────────────────────────────────
+def display_numbeo_block() -> None:
+    st.markdown("#### 1 – Select filters")
 
-    if FALLBACK_CSV.exists():
-        st.info("⏪ Chargement du fichier CSV de secours Numbeo…")
-        return pd.read_csv(FALLBACK_CSV)
+    # Chargement initial (depuis SQLite ou fallback CSV)
+    df_full = _load_cached_data()
+    region_list = get_city_options(df_full)
+    variable_list = get_variable_options(df_full)
 
-    raise FileNotFoundError("❌ Aucun fichier Numbeo valide trouvé (.db ou CSV).")
+    # Initialisation de l’état local Streamlit
+    st.session_state.setdefault("numbeo_regions", [])
+    st.session_state.setdefault("numbeo_variables", variable_list[:5])
 
-# ── Liste des villes/régions ────────────────────────────────
-def get_city_options(df: pd.DataFrame) -> list[str]:
-    if "name" not in df.columns:
-        raise ValueError("Colonne 'name' introuvable.")
-    return sorted(df["name"].dropna().astype(str).str.strip().unique())
+    # 🏙️ Sélecteur de régions
+    col1, col2 = st.columns([5, 1])
+    with col1:
+        selected_regions = st.multiselect(
+            "Region (city, country)",
+            options=region_list,
+            default=st.session_state.numbeo_regions,
+        )
+    with col2:
+        if st.button("✓ Select All", key="select_all_regions"):
+            selected_regions = region_list.copy()
 
-# ── Liste des variables affichables ──────────────────────────
-def get_variable_options(df: pd.DataFrame) -> list[str]:
-    exclude = {"id_city", "name", "status"}
-    return [col for col in df.columns if col not in exclude]
+    # 📊 Sélecteur de variables
+    col3, col4 = st.columns([5, 1])
+    with col3:
+        selected_vars = st.multiselect(
+            "Variables",
+            options=variable_list,
+            default=st.session_state.numbeo_variables,
+        )
+    with col4:
+        if st.button("✓ Select All", key="select_all_variables"):
+            selected_vars = variable_list.copy()
 
-# ── Filtrage de l’affichage ─────────────────────────────────
-def filter_numbeo_data(
-    df: pd.DataFrame,
-    regions: list[str] | None,
-    variables: list[str],
-) -> pd.DataFrame:
-    if "name" not in df.columns:
-        raise ValueError("Colonne 'name' introuvable.")
-    if not regions:
-        regions = df["name"].dropna().unique()
+    # 🔄 Mise à jour de l’état local
+    st.session_state.numbeo_regions = selected_regions
+    st.session_state.numbeo_variables = selected_vars
 
-    filtered = df[df["name"].isin(regions)].copy()
-    cols = ["name"] + (["status"] if "status" in df.columns else []) + variables
-    return filtered[cols].reset_index(drop=True)
+    # ⚠️ Validation minimale
+    if not selected_vars:
+        st.warning("Please select at least one variable.")
+        return
+
+    # 📥 Filtrage des données
+    filtered_df = filter_numbeo_data(df_full, selected_regions or None, selected_vars)
+    st.success(f"{len(filtered_df)} rows selected.")
+
+    # 📋 Aperçu interactif (limité à 10 colonnes par défaut)
+    show_all_cols = st.checkbox("Show all columns", value=False)
+    if not show_all_cols and len(filtered_df.columns) > 10:
+        st.dataframe(filtered_df.iloc[:, :10], use_container_width=True)
+        st.caption("Only the first 10 columns are shown. Enable toggle to see all.")
+    else:
+        st.dataframe(filtered_df, use_container_width=True)
+
+    # 💾 Export CSV
+    st.download_button(
+        label="📥 Download CSV",
+        data=filtered_df.to_csv(index=False).encode("utf-8"),
+        file_name="numbeo_filtered.csv",
+        mime="text/csv",
+    )
