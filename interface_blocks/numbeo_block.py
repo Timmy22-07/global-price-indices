@@ -22,7 +22,7 @@ def _load_cached_data():
     return load_numbeo_data()
 
 # ─────────────────────────────────────────────────────────────
-def display_numbeo_block() -> None:
+def display_numbeo_block() :
     st.markdown("#### 1 – Select filters")
 
     # Chargement initial (depuis SQLite ou fallback CSV)
