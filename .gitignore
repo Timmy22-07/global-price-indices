@@ -1,18 +1,13 @@
-# Fichiers temporaires et inutiles
+# Fichiers système
 __pycache__/
 *.pyc
-*.pyo
-*.log
-*.db
-*.pkl
 
-# Fichiers de données lourds
-*.xlsx
-*.csv
+# Environnement virtuel
+.venv/
 
-# Répertoires à ignorer
-data/cache/
-data/cleaned/
+# Dossiers cachés d’IDE
 .vscode/
-.env
-.DS_Store
+.idea/
+
+# Cache Jupyter
+.ipynb_checkpoints/
