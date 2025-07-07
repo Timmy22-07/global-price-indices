@@ -1,7 +1,7 @@
-# interface_blocks/icp_block.py – v2025-07-08
-# ---------------------------------------------------------------
-# Bloc interface World Bank – ICP (filtrage interactif)
-# ---------------------------------------------------------------
+# interface_blocks/icp_block.py – v2025-07-08b
+# ---------------------------------------------------------------------
+# Bloc interface World Bank – ICP (filtrage structuré : pays → classification → série → année)
+# ---------------------------------------------------------------------
 
 import streamlit as st
 import pandas as pd
@@ -9,7 +9,6 @@ import pandas as pd
 from core.world_bank_icp_loader import (
     load_icp_data,
     get_country_options as get_icp_countries,
-    get_metadata_options,
     get_year_options as get_icp_years,
     filter_icp_data,
 )
@@ -19,12 +18,12 @@ def load_icp_cached():
     return load_icp_data()
 
 def display_wb_icp_block():
-    st.markdown("#### 1 – Select filters")
+    st.markdown("#### 1 – Select country")
 
     with st.spinner("📊 Loading ICP data..."):
         df_icp = load_icp_cached()
 
-        # Vérification stricte des colonnes attendues
+        # Vérifie les colonnes nécessaires
         required_cols = ["country_name", "classification_name", "series_name"]
         for col in required_cols:
             if col not in df_icp.columns:
@@ -32,21 +31,33 @@ def display_wb_icp_block():
                 st.dataframe(df_icp.head())
                 st.stop()
 
+        # Sélection du pays
         countries = sorted(df_icp["country_name"].dropna().unique())
-        classifications = sorted(df_icp["classification_name"].dropna().unique())
-        series_names = sorted(df_icp["series_name"].dropna().unique())
-        year_cols = [col for col in df_icp.columns if isinstance(col, int)]
+        country = st.selectbox("Country", countries)
 
-    # Interface de sélection
+        # Filtrage des classifications disponibles pour le pays
+        df_filtered_country = df_icp[df_icp["country_name"] == country]
+        classifications = sorted(df_filtered_country["classification_name"].dropna().unique())
+
+    st.markdown("#### 2 – Select classification and series")
+
     c1, c2 = st.columns(2)
-    country = c1.selectbox("Country", countries)
-    classification = c2.selectbox("Classification", classifications)
+    classification = c1.selectbox("Classification", classifications)
 
-    series = st.selectbox("Series", series_names)
-    years = st.multiselect("Years (optional)", year_cols)
+    # Filtrage des séries selon classification choisie
+    df_filtered_classif = df_filtered_country[df_filtered_country["classification_name"] == classification]
+    series_names = sorted(df_filtered_classif["series_name"].dropna().unique())
+    series = c2.selectbox("Series", series_names)
 
-    # Résultats
-    st.markdown("#### 2 – Results")
+    st.markdown("#### 3 – Select years (optional)")
+
+    # Filtrage final pour détecter les colonnes d’années disponibles
+    df_filtered_series = df_filtered_classif[df_filtered_classif["series_name"] == series]
+    year_cols = [col for col in df_filtered_series.columns if isinstance(col, int)]
+    years = st.multiselect("Years", year_cols)
+
+    st.markdown("#### 4 – Results")
+
     filtered = filter_icp_data(
         df_icp,
         country=country,
