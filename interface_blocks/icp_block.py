@@ -24,7 +24,7 @@ def display_wb_icp_block():
             if col not in df_icp.columns:
                 st.error(f"❌ Column '{col}' is missing from the dataset.")
                 st.dataframe(df_icp.head())
-                st.stop()
+                
 
         countries = sorted(df_icp["country_name"].dropna().unique())
         classifications = sorted(df_icp["classification_name"].dropna().unique())
