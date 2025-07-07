@@ -1,11 +1,14 @@
-# interface_blocks/numbeo_block.py – v2025-07-08
+# interface_blocks/numbeo_block.py – v2025-07-08 final
 # ------------------------------------------------------------
-# • Persist. sélections via st.session_state                  |
-# • Boutons “Tout sélectionner” pour régions & variables      |
-# • Aperçu 10 colonnes (toggle) + téléchargement CSV          |
+# • Sélection dynamique des régions (ville/pays)              |
+# • Sélection multi-variables (avec bouton Tout sélectionner) |
+# • Affichage intelligent limité à 10 colonnes                |
+# • Téléchargement CSV                                        |
 # ------------------------------------------------------------
+
 from __future__ import annotations
 import streamlit as st
+
 from core.numbeo_loader import (
     load_numbeo_data,
     get_city_options,
@@ -13,69 +16,75 @@ from core.numbeo_loader import (
     filter_numbeo_data,
 )
 
+# ─────────────────────────────────────────────────────────────
+# Chargement des données (cache mémoire)
 @st.cache_data(show_spinner=False)
-def _load_cached():
+def _load_cached_data():
     return load_numbeo_data()
 
+# ─────────────────────────────────────────────────────────────
+# Bloc principal d’interface
 def display_numbeo_block() -> None:
     st.markdown("#### 1 – Select filters")
 
-    # ── Chargement (une seule fois) ───────────────────────────
-    df_full = _load_cached()
-    all_regions = get_city_options(df_full)
-    all_vars    = get_variable_options(df_full)
+    # Chargement initial des données
+    df_full = _load_cached_data()
+    region_list = get_city_options(df_full)
+    variable_list = get_variable_options(df_full)
 
-    # ── Init session_state ───────────────────────────────────
-    st.session_state.setdefault("num_reg_sel", [])
-    st.session_state.setdefault("num_var_sel", all_vars[:5])
+    # Initialisation état local
+    st.session_state.setdefault("numbeo_regions", [])
+    st.session_state.setdefault("numbeo_variables", variable_list[:5])
 
-    # ── Sélection régions ────────────────────────────────────
-    col_r1, col_r2 = st.columns([5, 1])
-    with col_r1:
-        reg_sel = st.multiselect(
+    # Sélecteurs de régions
+    col1, col2 = st.columns([5, 1])
+    with col1:
+        selected_regions = st.multiselect(
             "Region (city, country)",
-            options=all_regions,
-            default=st.session_state.num_reg_sel,
+            options=region_list,
+            default=st.session_state.numbeo_regions,
         )
-    with col_r2:
-        if st.button("✓ All", key="numbeo_all_regions"):
-            reg_sel = all_regions.copy()
+    with col2:
+        if st.button("✓ Select All", key="select_all_regions"):
+            selected_regions = region_list.copy()
 
-    # ── Sélection variables ──────────────────────────────────
-    col_v1, col_v2 = st.columns([5, 1])
-    with col_v1:
-        var_sel = st.multiselect(
+    # Sélecteurs de variables
+    col3, col4 = st.columns([5, 1])
+    with col3:
+        selected_vars = st.multiselect(
             "Variables",
-            options=all_vars,
-            default=st.session_state.num_var_sel,
+            options=variable_list,
+            default=st.session_state.numbeo_variables,
         )
-    with col_v2:
-        if st.button("✓ All", key="numbeo_all_vars"):
-            var_sel = all_vars.copy()
+    with col4:
+        if st.button("✓ Select All", key="select_all_variables"):
+            selected_vars = variable_list.copy()
 
-    # ── Mémorise les choix ───────────────────────────────────
-    st.session_state.num_reg_sel = reg_sel
-    st.session_state.num_var_sel = var_sel
+    # Mise à jour session
+    st.session_state.numbeo_regions = selected_regions
+    st.session_state.numbeo_variables = selected_vars
 
-    if not var_sel:
-        st.warning("Sélectionnez au moins une variable.")
+    # Alerte si aucune variable sélectionnée
+    if not selected_vars:
+        st.warning("Please select at least one variable.")
         return
 
-    # ── Filtrage + affichage ─────────────────────────────────
-    filtered = filter_numbeo_data(df_full, reg_sel or None, var_sel)
-    st.success(f"{len(filtered)} lignes sélectionnées.")
+    # Filtrage des données
+    filtered_df = filter_numbeo_data(df_full, selected_regions or None, selected_vars)
+    st.success(f"{len(filtered_df)} rows selected.")
 
-    show_all_cols = st.checkbox("Afficher toutes les colonnes", value=False)
-    if not show_all_cols and len(filtered.columns) > 10:
-        st.dataframe(filtered.iloc[:, :10], use_container_width=True)
-        st.caption("Affichage limité aux 10 premières colonnes.")
+    # Affichage des résultats (limite à 10 colonnes)
+    show_all_cols = st.checkbox("Show all columns", value=False)
+    if not show_all_cols and len(filtered_df.columns) > 10:
+        st.dataframe(filtered_df.iloc[:, :10], use_container_width=True)
+        st.caption("Only first 10 columns shown. Enable the toggle to display all.")
     else:
-        st.dataframe(filtered, use_container_width=True)
+        st.dataframe(filtered_df, use_container_width=True)
 
-    # ── Téléchargement CSV ───────────────────────────────────
+    # Téléchargement du CSV
     st.download_button(
-        "📥 Download CSV",
-        filtered.to_csv(index=False).encode(),
+        label="📥 Download CSV",
+        data=filtered_df.to_csv(index=False).encode("utf-8"),
         file_name="numbeo_filtered.csv",
         mime="text/csv",
     )
