@@ -1,0 +1,18 @@
+# Fichiers temporaires et inutiles
+__pycache__/
+*.pyc
+*.pyo
+*.log
+*.db
+*.pkl
+
+# Fichiers de données lourds
+*.xlsx
+*.csv
+
+# Répertoires à ignorer
+data/cache/
+data/cleaned/
+.vscode/
+.env
+.DS_Store
