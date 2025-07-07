@@ -22,10 +22,10 @@ from core.welcome import display_welcome_tab
 from core.source_config import CATEGORY_TO_SOURCES
 
 # ⵀ Core loaders
-from core.big_mac import load_data as load_big_mac, get_lookup_table, filter_data as filter_big_mac
+#from core.big_mac import load_data as load_big_mac, get_lookup_table, filter_data as filter_big_mac
 #from core.bis_loader import load_bis_reer_data, get_filter_options, filter_bis_data
-from core.numbeo_loader import load_numbeo_data, filter_numbeo_data, get_variable_options
-from core.penn_loader import load_penn_data, get_country_options as get_penn_countries, get_variable_options as get_penn_vars, filter_penn_data
+#from core.numbeo_loader import load_numbeo_data, filter_numbeo_data, get_variable_options
+#from core.penn_loader import load_penn_data, get_country_options as get_penn_countries, get_variable_options as get_penn_vars, filter_penn_data
 from core.world_bank_cpi_loader import (
     load_wb_cpi_data,
     get_country_options as get_cpi_countries,
