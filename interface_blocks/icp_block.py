@@ -1,3 +1,8 @@
+# interface_blocks/icp_block.py – v2025-07-08
+# ---------------------------------------------------------------
+# Bloc interface World Bank – ICP (filtrage interactif)
+# ---------------------------------------------------------------
+
 import streamlit as st
 import pandas as pd
 
@@ -15,10 +20,11 @@ def load_icp_cached():
 
 def display_wb_icp_block():
     st.markdown("#### 1 – Select filters")
+
     with st.spinner("📊 Loading ICP data..."):
         df_icp = load_icp_cached()
 
-        # Sécurité : vérifie les colonnes nécessaires
+        # Vérification stricte des colonnes attendues
         required_cols = ["country_name", "classification_name", "series_name"]
         for col in required_cols:
             if col not in df_icp.columns:
@@ -29,27 +35,29 @@ def display_wb_icp_block():
         countries = sorted(df_icp["country_name"].dropna().unique())
         classifications = sorted(df_icp["classification_name"].dropna().unique())
         series_names = sorted(df_icp["series_name"].dropna().unique())
-        year_cols = [col for col in df_icp.columns if col.isnumeric()]
+        year_cols = [col for col in df_icp.columns if isinstance(col, int)]
 
-        c1, c2 = st.columns(2)
-        country = c1.selectbox("Country", countries)
-        classification = c2.selectbox("Classification", classifications)
+    # Interface de sélection
+    c1, c2 = st.columns(2)
+    country = c1.selectbox("Country", countries)
+    classification = c2.selectbox("Classification", classifications)
 
-        series = st.selectbox("Series", series_names)
-        years = st.multiselect("Years (optional)", year_cols)
+    series = st.selectbox("Series", series_names)
+    years = st.multiselect("Years (optional)", year_cols)
 
-        st.markdown("#### 2 – Results")
-        filtered = filter_icp_data(
-            df_icp,
-            country=country,
-            classification_name=classification,
-            series_name=series,
-            years=years or None,
-        )
+    # Résultats
+    st.markdown("#### 2 – Results")
+    filtered = filter_icp_data(
+        df_icp,
+        country=country,
+        classification_name=classification,
+        series_name=series,
+        year=years or None,
+    )
 
-        filtered = filtered.reset_index(drop=True)
-        filtered.index += 1
-        filtered.index.name = "Numéro de ligne"
+    filtered = filtered.reset_index(drop=True)
+    filtered.index += 1
+    filtered.index.name = "Numéro de ligne"
 
     st.success(f"{len(filtered)} rows selected.")
     show_all = st.checkbox("Show all rows", value=False)
@@ -59,6 +67,5 @@ def display_wb_icp_block():
         "Download CSV",
         filtered.to_csv(index=False).encode(),
         file_name=f"wb_icp_{country.replace(' ', '_')}_{series.replace(' ', '_')}.csv",
-        mime="text/csv",    
+        mime="text/csv",
     )
-
