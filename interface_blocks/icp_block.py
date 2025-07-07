@@ -1,12 +1,6 @@
-# interface_blocks/wb_icp_block.py – v2025-07-08 FIXED v2
-# ---------------------------------------------------------------------
-# • Interface block for World Bank – ICP, with cache and loading spinner.
-# • Vérification des métadonnées + gestion des erreurs typées
-# • Correction de l’accès aux colonnes sensibles à la casse
-# ---------------------------------------------------------------------
-
 import streamlit as st
 import pandas as pd
+
 from core.world_bank_icp_loader import (
     load_icp_data,
     get_country_options as get_icp_countries,
@@ -23,52 +17,39 @@ def display_wb_icp_block():
     st.markdown("#### 1 – Select filters")
     with st.spinner("📊 Loading ICP data..."):
         df_icp = load_icp_cached()
-        metadata = get_metadata_options(df_icp)
 
-        # ✅ Vérification : le résultat est bien un DataFrame
-        if not isinstance(metadata, pd.DataFrame):
-            st.error("❌ Metadata is not a valid DataFrame.")
-            st.stop()
+        # Sécurité : vérifie les colonnes nécessaires
+        required_cols = ["Country Name", "Classification Name", "Series Name"]
+        for col in required_cols:
+            if col not in df_icp.columns:
+                st.error(f"❌ Column '{col}' is missing from the dataset.")
+                st.dataframe(df_icp.head())
+                st.stop()
 
-        # ✅ Vérification des colonnes nécessaires
-        required_cols = ["Classification Name", "Series Name"]
-        missing_cols = [col for col in required_cols if col not in metadata.columns]
-        if missing_cols:
-            st.error(f"❌ Missing columns in metadata: {', '.join(missing_cols)}")
-            st.dataframe(metadata.head())
-            st.stop()
+        countries = sorted(df_icp["Country Name"].dropna().unique())
+        classifications = sorted(df_icp["Classification Name"].dropna().unique())
+        series_names = sorted(df_icp["Series Name"].dropna().unique())
+        year_cols = [col for col in df_icp.columns if col.isnumeric()]
 
-        # ✅ Sélection sécurisée
         c1, c2 = st.columns(2)
-        country = c1.selectbox("Country", get_icp_countries(df_icp))
+        country = c1.selectbox("Country", countries)
+        classification = c2.selectbox("Classification", classifications)
 
-        classification_options = metadata["Classification Name"].dropna().unique().tolist()
-        if not classification_options:
-            st.error("❌ No classification data available.")
-            st.stop()
-        classification = c2.selectbox("Classification", classification_options)
+        series = st.selectbox("Series", series_names)
+        years = st.multiselect("Years (optional)", year_cols)
 
-        series_options = metadata["Series Name"].dropna().unique().tolist()
-        if not series_options:
-            st.error("❌ No series data available.")
-            st.stop()
-        series = st.selectbox("Series", series_options)
+        st.markdown("#### 2 – Results")
+        filtered = filter_icp_data(
+            df_icp,
+            country=country,
+            classification_name=classification,
+            series_name=series,
+            years=years or None,
+        )
 
-        years = st.multiselect("Years (optional)", get_icp_years(df_icp))
-
-    # ────────────────────────────────
-    st.markdown("#### 2 – Results")
-    filtered = filter_icp_data(
-        df_icp,
-        country=country,
-        classification_name=classification,
-        series_name=series,
-        years=years or None,
-    )
-
-    filtered = filtered.reset_index(drop=True)
-    filtered.index += 1
-    filtered.index.name = "Numéro de ligne"
+        filtered = filtered.reset_index(drop=True)
+        filtered.index += 1
+        filtered.index.name = "Numéro de ligne"
 
     st.success(f"{len(filtered)} rows selected.")
     show_all = st.checkbox("Show all rows", value=False)
