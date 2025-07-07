@@ -54,10 +54,17 @@ def display_wb_icp_block():
     st.success(f"{len(filtered)} rows selected.")
     show_all = st.checkbox("Show all rows", value=False)
     st.dataframe(filtered if show_all else filtered.head(10), use_container_width=True)
-
+    
+    metadata = get_metadata_options(df_icp)
+    st.write("Type metadata:", type(metadata))
+    st.write("Metadata preview:", metadata)
+    
     st.download_button(
         "Download CSV",
         filtered.to_csv(index=False).encode(),
         file_name=f"wb_icp_{country.replace(' ', '_')}_{series.replace(' ', '_')}.csv",
         mime="text/csv",
+
+        
     )
+
