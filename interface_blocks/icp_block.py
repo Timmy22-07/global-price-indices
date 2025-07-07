@@ -20,11 +20,7 @@ def display_wb_icp_block():
 
         # Sécurité : vérifie les colonnes nécessaires
         required_cols = ["Country Name", "Classification Name", "Series Name"]
-        for col in required_cols:
-            if col not in df_icp.columns:
-                st.error(f"❌ Column '{col}' is missing from the dataset.")
-                st.dataframe(df_icp.head())
-                st.stop()
+        
 
         countries = sorted(df_icp["Country Name"].dropna().unique())
         classifications = sorted(df_icp["Classification Name"].dropna().unique())
@@ -54,17 +50,11 @@ def display_wb_icp_block():
     st.success(f"{len(filtered)} rows selected.")
     show_all = st.checkbox("Show all rows", value=False)
     st.dataframe(filtered if show_all else filtered.head(10), use_container_width=True)
-    
-    metadata = get_metadata_options(df_icp)
-    st.write("Type metadata:", type(metadata))
-    st.write("Metadata preview:", metadata)
-    
+
     st.download_button(
         "Download CSV",
         filtered.to_csv(index=False).encode(),
         file_name=f"wb_icp_{country.replace(' ', '_')}_{series.replace(' ', '_')}.csv",
-        mime="text/csv",
-
-        
+        mime="text/csv",    
     )
 
