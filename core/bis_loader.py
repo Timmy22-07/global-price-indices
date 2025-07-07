@@ -1,115 +1,65 @@
-# core/bis_loader.py
-"""BIS REER loader ‒ supports four Excel files split by period (1994‑2025).
-
-Fonctions clés
---------------
-load_bis_reer_data()            → DataFrame long format (metadata + date + value)
-get_filter_options(df)          → dictionnaire des valeurs uniques + "All" pour
-                                  Reference area, Frequency, Type, Basket, Unit
-filter_bis_data(df, selections) → DataFrame filtré selon selections + année
-"""
+# core/numbeo_loader.py – v2025‑07‑07 robust
+# ---------------------------------------------------------------------
+# Robust loader for Numbeo SQLite DB (cities table)
+# • Gracefully handles missing/invalid DB files
+# • Provides get_city_options, get_variable_options, filter_numbeo_data
+# ---------------------------------------------------------------------
 
 from pathlib import Path
-from typing import Dict, List, Optional
+import sqlite3
 import pandas as pd
 import streamlit as st
 
-# Chemin par défaut vers les fichiers BIS
-default_dir = Path("data/raw/bis")
+DB_PATH = Path("data/raw/numbeo/numbeo.db")
+FALLBACK_CSV = Path("data/raw/numbeo/numbeo_fallback.csv")  # optional fallback
 
-META_COLS = [
-    "Dataflow ID",        # A
-    "Timeseries Key",     # B
-    "Frequency",          # C
-    "Type",               # D
-    "Basket",             # E
-    "Reference area",     # F
-    "Unit",               # G
-]
+# ------------------------------------------------------------------ #
+# 1. Load data (DB → DataFrame)                                      #
+# ------------------------------------------------------------------ #
 
-# ------------------------------------------------------------------
-# 1) LOAD & MELT
-# ------------------------------------------------------------------
+@st.cache_data(show_spinner=False)
+def load_numbeo_data(db_path: Path = DB_PATH) -> pd.DataFrame:
+    """Load cities table from SQLite DB. If it fails, try fallback CSV."""
+    if db_path.exists():
+        try:
+            with sqlite3.connect(db_path) as conn:
+                tables = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table';", conn)["name"].tolist()
+                if "cities" not in tables:
+                    raise ValueError(f"Table 'cities' not found. Tables available: {tables}")
+                df = pd.read_sql("SELECT * FROM cities;", conn)
+                df.columns = df.columns.str.strip()
+                return df
+        except Exception as e:
+            st.warning(f"⚠️ Failed to read SQLite DB ({e}). Trying fallback CSV…")
+    # Fallback
+    if FALLBACK_CSV.exists():
+        st.info("Loading fallback CSV for Numbeo data…")
+        return pd.read_csv(FALLBACK_CSV)
+    raise FileNotFoundError("No valid Numbeo dataset available (DB or CSV fallback).")
 
-def load_bis_reer_data(directory: Path = default_dir) -> pd.DataFrame:
-    """Charge tous les fichiers BIS .xlsx et renvoie un DataFrame long."""
-    files = sorted(directory.glob("*.xlsx"))
-    if not files:
-        raise FileNotFoundError(f"No BIS files found in {directory}")
+# ------------------------------------------------------------------ #
+# 2. Helpers                                                         #
+# ------------------------------------------------------------------ #
 
-    long_frames: List[pd.DataFrame] = []
-    for file in files:
-        wide = pd.read_excel(file)
+def get_city_options(df: pd.DataFrame) -> list[str]:
+    if "name" not in df.columns:
+        raise ValueError("Column 'name' missing from Numbeo data.")
+    return sorted(df["name"].dropna().astype(str).str.strip().unique())
 
-        # Vérifie que les 7 premières colonnes correspondent bien aux métadonnées
-        meta = wide.columns[:7]
-        date_cols = wide.columns[7:]
+def get_variable_options(df: pd.DataFrame) -> list[str]:
+    exclude = {"id_city", "name", "status"}
+    return [c for c in df.columns if c not in exclude]
 
-        # Melt → long format
-        long = wide.melt(
-            id_vars=meta,
-            value_vars=date_cols,
-            var_name="date",
-            value_name="value",
-        )
-        long_frames.append(long)
+# ------------------------------------------------------------------ #
+# 3. Filtering                                                       #
+# ------------------------------------------------------------------ #
 
-    df = pd.concat(long_frames, ignore_index=True)
-
-    # Nettoyage : uniformise les noms de colonnes → snake_case
-    df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
-
-    # Convertit la colonne date en datetime
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
-
-    return df
-
-# ------------------------------------------------------------------
-# 2) FILTER UTILITIES
-# ------------------------------------------------------------------
-
-@st.cache_data
-def get_filter_options(df: pd.DataFrame) -> Dict[str, List[str]]:
-    """Retourne un dict {colonne: [\"All\", ...valeurs uniques]}"""
-    cols = [
-        "reference_area", "frequency", "type", "basket", "unit"
-    ]
-    opts: Dict[str, List[str]] = {}
-    for col in cols:
-        values = sorted(df[col].dropna().unique().tolist())
-        opts[col] = ["All"] + values
-    return opts
-
-
-def filter_bis_data(
-    df: pd.DataFrame,
-    reference_area: str = "All",
-    frequency: str = "All",
-    type_: str = "All",
-    basket: str = "All",
-    unit: str = "All",
-    year: Optional[int] = None,
-) -> pd.DataFrame:
-    """Filtre le DataFrame BIS selon les sélections (\"All\" = pas de filtre)."""
-    if reference_area != "All":
-        df = df[df["reference_area"] == reference_area]
-    if frequency != "All":
-        df = df[df["frequency"] == frequency]
-    if type_ != "All":
-        df = df[df["type"] == type_]
-    if basket != "All":
-        df = df[df["basket"] == basket]
-    if unit != "All":
-        df = df[df["unit"] == unit]
-    if year is not None:
-        df = df[df["date"].dt.year == year]
-    return df.reset_index(drop=True)
-
-# ------------------------------------------------------------------
-# TEST RAPIDE
-# ------------------------------------------------------------------
-if __name__ == "__main__":
-    df_full = load_bis_reer_data()
-    opts = get_filter_options(df_full)
-    print("Columns:", df_full.columns.tolist()[:10])
-    print("Sample filters:", opts)
+def filter_numbeo_data(df: pd.DataFrame, regions: list[str], variables: list[str]) -> pd.DataFrame:
+    """Return filtered DataFrame for selected regions and variables."""
+    if "name" not in df.columns:
+        raise ValueError("Column 'name' missing from Numbeo data.")
+    if not regions:
+        regions = df["name"].dropna().unique()  # select all
+    subset = df[df["name"].isin(regions)].copy()
+    cols = ["name"] + ( ["status"] if "status" in df.columns else [] ) + variables
+    return subset[cols].reset_index(drop=True)
