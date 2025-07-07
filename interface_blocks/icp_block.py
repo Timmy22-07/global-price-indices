@@ -24,7 +24,7 @@ def display_wb_icp_block():
 
         c1, c2 = st.columns(2)
         country = c1.selectbox("Country", get_icp_countries(df_icp))
-        classification = c2.selectbox("Classification", metadata["classification_name"])
+        classification = c2.selectbox("Classification", metadata["Classification Name"])
 
         series = st.selectbox("Series", metadata["series_name"])
         years = st.multiselect("Years (optional)", get_icp_years(df_icp))
