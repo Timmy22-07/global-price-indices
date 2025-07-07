@@ -1,8 +1,8 @@
-# app/main_app.py – v2025‑07‑07 (navigation avec onglet Accueil)
+# app/main_app.py – v2025‑07‑07 clean
 # ---------------------------------------------------------------------
-# ✅ Onglet d’accueil intégré dans la navigation, AVANT les catégories
-# ✅ Ne s'affiche qu'à la sélection explicite "🏠 Accueil"
-# ✅ Autres blocs uniquement quand une source réelle est sélectionnée
+# ✅ Onglet d’accueil AVANT la navigation par catégorie
+# ✅ Bloc Numbeo appelé une seule fois
+# ✅ Message de fin clair
 # ---------------------------------------------------------------------
 
 from __future__ import annotations
@@ -13,14 +13,15 @@ import streamlit as st
 # Ajoute le dossier parent au chemin d'import
 sys.path.append(os.path.abspath(os.path.join(Path(__file__).parent, "..")))
 
-# ──────────────── Configuration de la page ──────────────── #
+# ⵀ Configuration
 st.set_page_config(page_title="Global Price Indices", layout="wide")
 st.title("🌐 Global Price Indices")
 
-# ──────────────── Imports bloc Accueil + Data ──────────────── #
+# ⵀ Onglet Accueil + Config
 from core.welcome import display_welcome_tab
 from core.source_config import CATEGORY_TO_SOURCES
 
+# ⵀ Core loaders
 from core.big_mac import load_data as load_big_mac, get_lookup_table, filter_data as filter_big_mac
 from core.bis_loader import load_bis_reer_data, get_filter_options, filter_bis_data
 from core.numbeo_loader import load_numbeo_data, filter_numbeo_data, get_variable_options
@@ -40,7 +41,7 @@ from core.world_bank_icp_loader import (
     filter_icp_data,
 )
 
-# ──────────────── Blocs interface ──────────────── #
+# ⵀ Interface blocks
 from interface_blocks.big_mac_block import display_big_mac_block
 from interface_blocks.bis_block import display_bis_block
 from interface_blocks.cpi_block import display_wb_cpi_block
@@ -48,18 +49,18 @@ from interface_blocks.icp_block import display_wb_icp_block
 from interface_blocks.penn_block import display_penn_block
 from interface_blocks.numbeo_block import display_numbeo_block
 
-# ──────────────── Onglet Accueil (hors catégorie) ──────────────── #
+# ⵀ Onglet accueil
 st.sidebar.header("🌐 Navigation")
 if st.sidebar.radio("Navigation", ["🏠 Accueil", "Explorer les données"], horizontal=False) == "🏠 Accueil":
     display_welcome_tab()
     st.stop()
 
-# ──────────────── Navigation latérale par catégorie ──────────────── #
-category = st.sidebar.radio("Category", list(CATEGORY_TO_SOURCES.keys()))
+# ⵀ Navigation
+category = st.sidebar.radio("Catégorie", list(CATEGORY_TO_SOURCES.keys()))
 source = st.sidebar.selectbox("Source", CATEGORY_TO_SOURCES[category])
 st.subheader(f"📊 {source}")
 
-# ──────────────── Bloc de contenu par source ──────────────── #
+# ⵀ Affichage conditionnel selon source
 with st.spinner("Chargement des données..."):
     if source == "The Economist – Big Mac Index":
         display_big_mac_block()
@@ -74,8 +75,5 @@ with st.spinner("Chargement des données..."):
     elif source == "Numbeo – Cost of Living + PPP":
         display_numbeo_block()
 
-    elif source == "Numbeo – Cost of Living + PPP":
-        display_numbeo_block()
-
-# ──────────────── Message de confirmation ──────────────── #
-st.info("✅ Application chargée avec succès.")
+# ⵀ Message de confirmation final
+st.info("✅ Application chargée avec succès. Sélectionnez une source dans la barre latérale pour commencer.")
