@@ -19,7 +19,7 @@ import streamlit as st
 
 # --- Chemin du fichier Excel -------------------------------------------------
 DATA_PATH = (
-    Path(__file__).resolve().parents[1]
+    Path(__file__).resolve().parent.parent
     / "data" / "raw" / "big_mac" / "Big Mac Index.xlsx"
 )
 
