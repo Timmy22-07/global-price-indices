@@ -1,9 +1,10 @@
-# interface_blocks/bis_block.py – v2025-07-09 refactor
-# ------------------------------------------------------------
-# • Sélecteurs multi-valeurs (multiselect) + bouton Select ALL
-# • Plus de menus vides (options calculées à la volée)
-# • Nom de fichier sécurisé                (« bis_reer_<ref>.csv »)
-# ------------------------------------------------------------
+# ───────────────────────── interface_blocks/bis_block.py – v2025-07-09 fixed ─────────────────────────
+"""
+Bloc d’interface : BIS – Real Effective Exchange Rates (REER)
+• Affichage interactif avec filtres multiples et sélection des dates
+• Boutons « ✓ All » pour remplir automatiquement les filtres
+• Sécurité ajoutée si aucune donnée n’est chargée
+"""
 
 from __future__ import annotations
 import streamlit as st
@@ -21,6 +22,14 @@ def display_bis_block() -> None:
 
     # ── Chargement des données BIS REER ──────────────────────
     df = _load_bis_reer()
+
+    if df.empty:
+        st.error(
+            "❌ Aucune donnée BIS-REER trouvée.\n\n"
+            "➡ Vérifie que les fichiers sont bien placés dans le dossier `data/raw/bis_reer/` "
+            "et qu’ils sont au format `.csv` ou `.xlsx`."
+        )
+        return
 
     # ── Préparation des listes d’options ─────────────────────
     ref_options    = _unique(df, "Reference area")
@@ -64,7 +73,7 @@ def display_bis_block() -> None:
     ]
     date_cols = [c for c in df.columns if c not in meta_cols]
     date_sel = st.multiselect("Dates to show", date_cols,
-                              default=date_cols[:3])
+                              default=date_cols[:3] if date_cols else [])
 
     # ── Application des filtres ──────────────────────────────
     filters = {
@@ -79,7 +88,7 @@ def display_bis_block() -> None:
     # ── Affichage des résultats ──────────────────────────────
     st.markdown("#### 2 – Results")
     show_cols = ["Reference area", "Frequency", "Type", "Basket", "Unit"] + date_sel
-    to_show = filtered[show_cols]
+    to_show = filtered[show_cols] if date_sel else filtered[["Reference area", "Frequency", "Type", "Basket", "Unit"]]
 
     st.success(f"{len(to_show)} rows selected.")
     st.dataframe(
