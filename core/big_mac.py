@@ -1,24 +1,36 @@
 import streamlit as st
-from core.big_mac import load_data as load_big_mac, get_lookup_table, filter_data as filter_big_mac
+from core.big_mac import (
+    load_data as load_big_mac,
+    get_lookup_table,
+    filter_data as filter_big_mac,
+)
 
 # ---------------------------------------------------------------------
-# Big‑Mac Index interface block — v3
-# • Ajout de boutons « ✓ All » pour ISO / Currency / Country
-# • Titre simplifié (« Pick one identifier »)
-# • Checkbox « All » (au lieu de « Select ALL parameters »)
+# Big‑Mac Index interface block — v3.1
+# • Boutons « ✓ All » pour ISO / Currency / Country
+# • Titre simplifié (plus de parenthèses)
+# • Checkbox « All » pour les paramètres
 # ---------------------------------------------------------------------
 
 @st.cache_data(show_spinner=False)
 def load_big_mac_cached():
     return load_big_mac()
 
-def _button_all(label: str, key: str):
-    """Affiche un petit bouton "✓ All" dans la colonne de droite."""
-    if st.button(label, key=key):
-        st.session_state[key.replace("_btn", "")] = "All"
+# ─────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────
+
+def _all_button(state_key: str, label: str = "✓ All"):
+    """Affiche un bouton qui place l'état à 'All' puis relance la page."""
+    if st.button(label, key=f"{state_key}_btn"):
+        st.session_state[state_key] = "All"
         st.rerun()
 
-def display_big_mac_block():
+# ─────────────────────────────────────────────────────────────
+# Bloc principal
+# ─────────────────────────────────────────────────────────────
+
+def display_big_mac_block() -> None:
     st.markdown("#### 1 – Pick one identifier")
 
     lookup = get_lookup_table()
@@ -27,6 +39,7 @@ def display_big_mac_block():
     for k in ("iso_sel", "cur_sel", "name_sel"):
         st.session_state.setdefault(k, "All")
 
+    # Filtre dynamique pour garder la cohérence entre listes
     df_filt = lookup.copy()
     if st.session_state.iso_sel != "All":
         df_filt = df_filt[df_filt["iso_a3"] == st.session_state.iso_sel]
@@ -35,10 +48,11 @@ def display_big_mac_block():
     if st.session_state.name_sel != "All":
         df_filt = df_filt[df_filt["name"] == st.session_state.name_sel]
 
-    iso_opts = ["All"] + sorted(df_filt["iso_a3"].unique())
-    cur_opts = ["All"] + sorted(df_filt["currency_code"].unique())
+    iso_opts  = ["All"] + sorted(df_filt["iso_a3"].unique())
+    cur_opts  = ["All"] + sorted(df_filt["currency_code"].unique())
     name_opts = ["All"] + sorted(df_filt["name"].unique())
 
+    # Sélecteurs principaux
     c1, c2, c3 = st.columns([1, 1, 2])
     with c1:
         iso_sel = st.selectbox("ISO Code", iso_opts, index=iso_opts.index(st.session_state.iso_sel))
@@ -56,53 +70,59 @@ def display_big_mac_block():
             st.session_state.name_sel = name_sel
             st.rerun()
 
-    # Boutons "All" (réinitialise à "All")
+    # Boutons All alignés sous les selects
     b1, b2, b3 = st.columns([1, 1, 1])
-    with b1: _button_all("✓ All", "iso_sel_btn")
-    with b2: _button_all("✓ All", "cur_sel_btn")
-    with b3: _button_all("✓ All", "name_sel_btn")
+    with b1: _all_button("iso_sel")
+    with b2: _all_button("cur_sel")
+    with b3: _all_button("name_sel")
 
     if st.button("🔁 Reset identifiers"):
-        st.session_state.iso_sel = "All"
-        st.session_state.cur_sel = "All"
-        st.session_state.name_sel = "All"
+        for k in ("iso_sel", "cur_sel", "name_sel"):
+            st.session_state[k] = "All"
         st.rerun()
 
-    iso, currency, country = (
-        None if st.session_state.iso_sel == "All" else st.session_state.iso_sel,
-        None if st.session_state.cur_sel == "All" else st.session_state.cur_sel,
-        None if st.session_state.name_sel == "All" else st.session_state.name_sel,
-    )
+    # Valeurs effectives pour le filtre de données
+    iso      = None if st.session_state.iso_sel  == "All" else st.session_state.iso_sel
+    currency = None if st.session_state.cur_sel  == "All" else st.session_state.cur_sel
+    country  = None if st.session_state.name_sel == "All" else st.session_state.name_sel
 
     # ------------------------------------------------------------------
     # Paramètres numériques
     # ------------------------------------------------------------------
-    st.markdown("#### 2 – Select parameters ↪")
+    st.markdown("#### 2 – Select parameters")
     big_mac_df = load_big_mac_cached()
     big_mac_df.columns = [c if c else "empty_column" for c in big_mac_df.columns]
-    numeric_cols = [c for c in big_mac_df.columns if c not in ["date", "iso_a3", "currency_code", "name", "empty_column"] and big_mac_df[c].dtype != object]
-    select_all = st.checkbox("All", value=False)
-    vars_sel = st.multiselect("Parameters", numeric_cols, default=(numeric_cols if select_all else numeric_cols[:2]))
+    numeric_cols = [
+        c for c in big_mac_df.columns
+        if c not in ["date", "iso_a3", "currency_code", "name", "empty_column"]
+        and big_mac_df[c].dtype != object
+    ]
+    select_all_params = st.checkbox("All", value=False)
+    vars_sel = st.multiselect(
+        "Parameters",
+        numeric_cols,
+        default=(numeric_cols if select_all_params else numeric_cols[:2]),
+    )
 
     # ------------------------------------------------------------------
-    # Sélecteur de date : année / mois / jour
+    # Sélecteur de date : Année / Mois / Jour
     # ------------------------------------------------------------------
     st.markdown("#### 3 – Select date")
     data_filtered = big_mac_df.copy()
-    if iso:       data_filtered = data_filtered[data_filtered["iso_a3"] == iso]
-    if currency:  data_filtered = data_filtered[data_filtered["currency_code"] == currency]
-    if country:   data_filtered = data_filtered[data_filtered["name"] == country]
+    if iso:      data_filtered = data_filtered[data_filtered["iso_a3"] == iso]
+    if currency: data_filtered = data_filtered[data_filtered["currency_code"] == currency]
+    if country:  data_filtered = data_filtered[data_filtered["name"] == country]
 
     years = sorted(data_filtered["date"].dt.year.unique())
-    year = st.selectbox("Year", ["All"] + [str(y) for y in years])
+    year  = st.selectbox("Year", ["All"] + [str(y) for y in years])
 
     month_data = data_filtered if year == "All" else data_filtered[data_filtered["date"].dt.year == int(year)]
     months = sorted(month_data["date"].dt.month.unique())
-    month = st.selectbox("Month", ["All"] + [str(m) for m in months])
+    month  = st.selectbox("Month", ["All"] + [str(m) for m in months])
 
     day_data = month_data if month == "All" else month_data[month_data["date"].dt.month == int(month)]
-    days = sorted(day_data["date"].dt.day.unique())
-    day = st.selectbox("Day", ["All"] + [str(d) for d in days])
+    days   = sorted(day_data["date"].dt.day.unique())
+    day    = st.selectbox("Day", ["All"] + [str(d) for d in days])
 
     # ------------------------------------------------------------------
     # Résultats
@@ -125,7 +145,7 @@ def display_big_mac_block():
 
     st.success(f"{len(res)} rows selected.")
     st.dataframe(
-        res if st.checkbox("Show all rows", value=False) else res.head(10),
+        res if st.checkbox("Show all rows", False) else res.head(10),
         use_container_width=True,
     )
 
