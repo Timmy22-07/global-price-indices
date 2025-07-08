@@ -11,7 +11,7 @@ import pandas as pd
 import re
 
 # Chemin vers les fichiers BIS-REER
-DATA_DIR = Path("data/raw/bis_reer")
+DATA_DIR = Path("data/raw/bis")
 
 # Colonnes méta (jamais considérées comme dates)
 META_COLS = [
