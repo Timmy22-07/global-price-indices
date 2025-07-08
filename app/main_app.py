@@ -51,14 +51,16 @@ from interface_blocks.numbeo_block import display_numbeo_block
 
 # ⵀ Onglet accueil
 st.sidebar.header("🌐 Navigation")
-nav_choice = st.sidebar.selectbox(
-    label="",
+nav_choice = st.sidebar.radio(
+    label="",  # ⬅️ Supprime le texte "Navigation"
     options=["🏠 Accueil", "Explorer les données"],
-    index=1
+    index=1,
+    horizontal=False
 )
 if nav_choice == "🏠 Accueil":
     display_welcome_tab()
     st.stop()
+
 
 # ⵀ Navigation
 category = st.sidebar.radio("Catégorie", list(CATEGORY_TO_SOURCES.keys()))
