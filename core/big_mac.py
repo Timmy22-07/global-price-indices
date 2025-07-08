@@ -1,157 +1,126 @@
+"""
+core/big_mac.py
+---------------
+Utilities for the “Big Mac Index” data-set.
+
+• load_data()            → charge le fichier Excel (cache mémoïsé)
+• get_lookup_table()     → renvoie toutes les combinaisons ISO / currency / name
+• resolve_identity()     → à partir d’une entrée unique (ISO, currency ou name),
+                           retourne toutes les combinaisons possibles
+• get_country_metadata() → renvoie toutes les combinaisons pour un nom de pays donné
+• filter_data()          → renvoie le DataFrame filtré selon identifiants,
+                           date (année / mois / jour) et variables numériques
+"""
+
+from pathlib import Path
+from functools import lru_cache
+import pandas as pd
 import streamlit as st
-from core.big_mac import (
-    load_data as load_big_mac,
-    get_lookup_table,
-    filter_data as filter_big_mac,
+
+# --- Chemin du fichier Excel -------------------------------------------------
+DATA_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "data" / "raw" / "big_mac" / "Big Mac Index.xlsx"
 )
 
-# ---------------------------------------------------------------------
-# Big‑Mac Index interface block — v3.1
-# • Boutons « ✓ All » pour ISO / Currency / Country
-# • Titre simplifié (plus de parenthèses)
-# • Checkbox « All » pour les paramètres
-# ---------------------------------------------------------------------
+# --- Colonnes clés -----------------------------------------------------------
+ID_COLS   = ["iso_a3", "currency_code", "name"]
+DATE_COL  = "date"
 
-@st.cache_data(show_spinner=False)
-def load_big_mac_cached():
-    return load_big_mac()
+@lru_cache(maxsize=1)
+def load_data() -> pd.DataFrame:
+    """Charge le fichier Excel et le met en cache."""
+    if not DATA_PATH.exists():
+        raise FileNotFoundError(f"Big Mac file not found → {DATA_PATH}")
+    df = pd.read_excel(DATA_PATH, engine="openpyxl")
+    df[DATE_COL] = pd.to_datetime(df[DATE_COL], errors="coerce")
+    return df
 
-# ─────────────────────────────────────────────────────────────
-# Helpers
-# ─────────────────────────────────────────────────────────────
 
-def _all_button(state_key: str, label: str = "✓ All"):
-    """Affiche un bouton qui place l'état à 'All' puis relance la page."""
-    if st.button(label, key=f"{state_key}_btn"):
-        st.session_state[state_key] = "All"
-        st.rerun()
+# --------------------------------------------------------------------------- #
+#                            OUTILS D’IDENTITÉ                                #
+# --------------------------------------------------------------------------- #
+@st.cache_data
+def get_lookup_table() -> pd.DataFrame:
+    """Renvoie toutes les combinaisons ISO / currency / name sans doublons."""
+    df = load_data()
+    return df[ID_COLS].drop_duplicates().reset_index(drop=True)
 
-# ─────────────────────────────────────────────────────────────
-# Bloc principal
-# ─────────────────────────────────────────────────────────────
 
-def display_big_mac_block() -> None:
-    st.markdown("#### 1 – Pick one identifier")
+def resolve_identity(iso: str | None = None,
+                     currency: str | None = None,
+                     name: str | None = None) -> pd.DataFrame:
+    """
+    À partir d’un seul identifiant fourni, renvoie toutes les combinaisons
+    possibles (⇢ DataFrame à 3 colonnes).  Lève ValueError si zéro ou
+    plusieurs identifiants reçus.
+    """
+    keys = [iso, currency, name]
+    if sum(k is not None for k in keys) != 1:
+        raise ValueError("Provide *exactly* one of iso / currency / name")
 
-    lookup = get_lookup_table()
+    df = load_data()
+    if iso is not None:
+        mask = df["iso_a3"] == iso
+    elif currency is not None:
+        mask = df["currency_code"] == currency
+    else:  # name
+        mask = df["name"] == name
 
-    # Initialise les states ("All" = aucune restriction)
-    for k in ("iso_sel", "cur_sel", "name_sel"):
-        st.session_state.setdefault(k, "All")
+    return df.loc[mask, ID_COLS].drop_duplicates().reset_index(drop=True)
 
-    # Filtre dynamique pour garder la cohérence entre listes
-    df_filt = lookup.copy()
-    if st.session_state.iso_sel != "All":
-        df_filt = df_filt[df_filt["iso_a3"] == st.session_state.iso_sel]
-    if st.session_state.cur_sel != "All":
-        df_filt = df_filt[df_filt["currency_code"] == st.session_state.cur_sel]
-    if st.session_state.name_sel != "All":
-        df_filt = df_filt[df_filt["name"] == st.session_state.name_sel]
+@st.cache_data
+def get_country_metadata(name: str) -> pd.DataFrame:
+    """
+    Renvoie toutes les combinaisons iso_a3 / currency_code correspondant à un pays donné.
+    Permet le remplissage automatique des champs selon le nom du pays.
+    """
+    df = load_data()
+    mask = df["name"].str.lower() == name.lower()
+    return df.loc[mask, ID_COLS].drop_duplicates().reset_index(drop=True)
 
-    iso_opts  = ["All"] + sorted(df_filt["iso_a3"].unique())
-    cur_opts  = ["All"] + sorted(df_filt["currency_code"].unique())
-    name_opts = ["All"] + sorted(df_filt["name"].unique())
 
-    # Sélecteurs principaux
-    c1, c2, c3 = st.columns([1, 1, 2])
-    with c1:
-        iso_sel = st.selectbox("ISO Code", iso_opts, index=iso_opts.index(st.session_state.iso_sel))
-        if iso_sel != st.session_state.iso_sel:
-            st.session_state.iso_sel = iso_sel
-            st.rerun()
-    with c2:
-        cur_sel = st.selectbox("Currency Code", cur_opts, index=cur_opts.index(st.session_state.cur_sel))
-        if cur_sel != st.session_state.cur_sel:
-            st.session_state.cur_sel = cur_sel
-            st.rerun()
-    with c3:
-        name_sel = st.selectbox("Country", name_opts, index=name_opts.index(st.session_state.name_sel))
-        if name_sel != st.session_state.name_sel:
-            st.session_state.name_sel = name_sel
-            st.rerun()
+# --------------------------------------------------------------------------- #
+#                              FILTRAGE                                       #
+# --------------------------------------------------------------------------- #
+def filter_data(iso: str,
+                currency: str,
+                name: str,
+                year: int | None = None,
+                month: int | None | str = None,
+                day: int | None | str = None,
+                variables: list[str] | None = None) -> pd.DataFrame:
+    """
+    Renvoie un sous-ensemble du DataFrame filtré par identifiants, date
+    (année/mois/jour) et variables numériques sélectionnées.
+    • month ou day peuvent être "All" pour ignorer le filtre correspondant.
+    • variables None → toutes les colonnes numériques.
+    """
+    df = load_data()
 
-    # Boutons All alignés sous les selects
-    b1, b2, b3 = st.columns([1, 1, 1])
-    with b1: _all_button("iso_sel")
-    with b2: _all_button("cur_sel")
-    with b3: _all_button("name_sel")
+    # --- filtre identifiants ---
+    mask = (
+        (df["iso_a3"] == iso) &
+        (df["currency_code"] == currency) &
+        (df["name"] == name)
+    )
 
-    if st.button("🔁 Reset identifiers"):
-        for k in ("iso_sel", "cur_sel", "name_sel"):
-            st.session_state[k] = "All"
-        st.rerun()
+    # --- filtre dates ---
+    if year is not None:
+        mask &= df[DATE_COL].dt.year == year
+    if month not in (None, "All"):
+        mask &= df[DATE_COL].dt.month == int(month)
+    if day not in (None, "All"):
+        mask &= df[DATE_COL].dt.day == int(day)
 
-    # Valeurs effectives pour le filtre de données
-    iso      = None if st.session_state.iso_sel  == "All" else st.session_state.iso_sel
-    currency = None if st.session_state.cur_sel  == "All" else st.session_state.cur_sel
-    country  = None if st.session_state.name_sel == "All" else st.session_state.name_sel
+    df = df.loc[mask].copy()
 
-    # ------------------------------------------------------------------
-    # Paramètres numériques
-    # ------------------------------------------------------------------
-    st.markdown("#### 2 – Select parameters")
-    big_mac_df = load_big_mac_cached()
-    big_mac_df.columns = [c if c else "empty_column" for c in big_mac_df.columns]
+    # --- sélection des variables numériques ---
     numeric_cols = [
-        c for c in big_mac_df.columns
-        if c not in ["date", "iso_a3", "currency_code", "name", "empty_column"]
-        and big_mac_df[c].dtype != object
+        c for c in df.columns
+        if c not in ID_COLS + [DATE_COL] and pd.api.types.is_numeric_dtype(df[c])
     ]
-    select_all_params = st.checkbox("All", value=False)
-    vars_sel = st.multiselect(
-        "Parameters",
-        numeric_cols,
-        default=(numeric_cols if select_all_params else numeric_cols[:2]),
-    )
+    if variables:
+        numeric_cols = [c for c in numeric_cols if c in variables]
 
-    # ------------------------------------------------------------------
-    # Sélecteur de date : Année / Mois / Jour
-    # ------------------------------------------------------------------
-    st.markdown("#### 3 – Select date")
-    data_filtered = big_mac_df.copy()
-    if iso:      data_filtered = data_filtered[data_filtered["iso_a3"] == iso]
-    if currency: data_filtered = data_filtered[data_filtered["currency_code"] == currency]
-    if country:  data_filtered = data_filtered[data_filtered["name"] == country]
-
-    years = sorted(data_filtered["date"].dt.year.unique())
-    year  = st.selectbox("Year", ["All"] + [str(y) for y in years])
-
-    month_data = data_filtered if year == "All" else data_filtered[data_filtered["date"].dt.year == int(year)]
-    months = sorted(month_data["date"].dt.month.unique())
-    month  = st.selectbox("Month", ["All"] + [str(m) for m in months])
-
-    day_data = month_data if month == "All" else month_data[month_data["date"].dt.month == int(month)]
-    days   = sorted(day_data["date"].dt.day.unique())
-    day    = st.selectbox("Day", ["All"] + [str(d) for d in days])
-
-    # ------------------------------------------------------------------
-    # Résultats
-    # ------------------------------------------------------------------
-    st.markdown("#### 4 – Results")
-    res = filter_big_mac(
-        iso=iso,
-        currency=currency,
-        name=country,
-        year=None if year == "All" else int(year),
-        month=None if month == "All" else int(month),
-        day=None if day == "All" else int(day),
-        variables=vars_sel or None,
-    )
-    res = res.loc[:, res.columns != "empty_column"].copy()
-    res["date"] = res["date"].dt.date
-
-    res.index += 1
-    res.index.name = "#"
-
-    st.success(f"{len(res)} rows selected.")
-    st.dataframe(
-        res if st.checkbox("Show all rows", False) else res.head(10),
-        use_container_width=True,
-    )
-
-    st.download_button(
-        "Download CSV",
-        res.to_csv(index=False).encode(),
-        file_name=f"big_mac_{iso or currency or country or 'all'}.csv",
-        mime="text/csv",
-    )
+    return df[[DATE_COL] + numeric_cols].reset_index(drop=True)
