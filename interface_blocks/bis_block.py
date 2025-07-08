@@ -41,11 +41,8 @@ def display_bis_block() -> None:
     ref_sel = multiselect_with_all("Reference Area", ref_options, "ref_sel", "ref_all")
     freq_sel = multiselect_with_all("Frequency", freq_options, "freq_sel", "freq_all")
     type_sel = multiselect_with_all("Type", type_options, "type_sel", "type_all")
-    basket_sel = st.multiselect("Basket", basket_options, default=st.session_state.basket_sel, key="basket_sel_box")
-    unit_sel = st.multiselect("Unit", unit_options, default=st.session_state.unit_sel, key="unit_sel_box")
-    if st.button("✓ All Units", key="unit_all"):
-        st.session_state.unit_sel = unit_options.copy()
-        st.rerun()
+    basket_sel = multiselect_with_all("Basket", basket_options, "basket_sel", "basket_all")
+    unit_sel = multiselect_with_all("Unit", unit_options, "unit_sel", "unit_all")
 
     # ── Dates dynamiques (année → mois → jour) ───────────────
     meta_cols = ["Dataflow ID", "Timeseries Key", "Frequency", "Type", "Basket", "Reference area", "Unit"]
