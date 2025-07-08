@@ -71,7 +71,7 @@ st.subheader(f"📊 {source}")
 with st.spinner("Chargement des données..."):
     if source == "The Economist – Big Mac Index":
         display_big_mac_block()
-    elif source == "BIS – Real Effective Exchange Rates (REER)":
+    elif source == "BBank for International Settlements – REER (Real Effective Exchange Rates)":
         display_bis_block()
     elif source == "World Bank – CPI (Consumer Price Index)":
         display_wb_cpi_block()
