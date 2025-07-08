@@ -6,8 +6,8 @@ from core.big_mac import (
 )
 
 # ---------------------------------------------------------------------
-# Big‑Mac Index interface block — v3.1
-# • Boutons « ✓ All » pour ISO / Currency / Country
+# Big‑Mac Index interface block — v3.2
+# • Boutons « ✓ All » pour ISO / Currency / Country — recharge toutes les options
 # • Titre simplifié (plus de parenthèses)
 # • Checkbox « All » pour les paramètres
 # ---------------------------------------------------------------------
@@ -39,18 +39,10 @@ def display_big_mac_block() -> None:
     for k in ("iso_sel", "cur_sel", "name_sel"):
         st.session_state.setdefault(k, "All")
 
-    # Filtre dynamique pour garder la cohérence entre listes
-    df_filt = lookup.copy()
-    if st.session_state.iso_sel != "All":
-        df_filt = df_filt[df_filt["iso_a3"] == st.session_state.iso_sel]
-    if st.session_state.cur_sel != "All":
-        df_filt = df_filt[df_filt["currency_code"] == st.session_state.cur_sel]
-    if st.session_state.name_sel != "All":
-        df_filt = df_filt[df_filt["name"] == st.session_state.name_sel]
-
-    iso_opts  = ["All"] + sorted(df_filt["iso_a3"].unique())
-    cur_opts  = ["All"] + sorted(df_filt["currency_code"].unique())
-    name_opts = ["All"] + sorted(df_filt["name"].unique())
+    # Liste complète pour chaque filtre, peu importe les autres
+    iso_opts  = ["All"] + sorted(lookup["iso_a3"].dropna().unique())
+    cur_opts  = ["All"] + sorted(lookup["currency_code"].dropna().unique())
+    name_opts = ["All"] + sorted(lookup["name"].dropna().unique())
 
     # Sélecteurs principaux
     c1, c2, c3 = st.columns([1, 1, 2])
