@@ -1,122 +1,106 @@
-from __future__ import annotations
+# interface_blocks/big_mac_block.py – v2 (externalized)
+# ---------------------------------------------------------------------
+# • Interface block for Big Mac Index, optimized with caching and spinner.
+# ---------------------------------------------------------------------
+
 import streamlit as st
-import pandas as pd
-from core.bis_loader import load_bis_reer_data, filter_bis_data
+from core.big_mac import load_data as load_big_mac, get_lookup_table, filter_data as filter_big_mac
 
 @st.cache_data(show_spinner=False)
-def _load_bis_reer():
-    return load_bis_reer_data()
+def load_big_mac_cached():
+    return load_big_mac()
 
-def _unique(df, col):
-    return sorted(df[col].dropna().unique().tolist())
+def display_big_mac_block():
+    st.markdown("#### 1 – Pick one identifier (others auto-FILTERED)")
+    lookup = get_lookup_table()
 
-def display_bis_block() -> None:
-    st.markdown("#### 1 – Select filters")
-    df = _load_bis_reer()
+    for k in ("iso_sel", "cur_sel", "name_sel"):
+        st.session_state.setdefault(k, "")
 
-    if df.empty:
-        st.error("❌ Aucune donnée BIS-REER trouvée.\n\n➡ Vérifie le dossier `data/raw/bis/` et les formats `.csv` ou `.xlsx`.")
-        return
+    df_filter = lookup.copy()
+    if st.session_state.iso_sel:
+        df_filter = df_filter[df_filter["iso_a3"] == st.session_state.iso_sel]
+    if st.session_state.cur_sel:
+        df_filter = df_filter[df_filter["currency_code"] == st.session_state.cur_sel]
+    if st.session_state.name_sel:
+        df_filter = df_filter[df_filter["name"] == st.session_state.name_sel]
 
-    # ── Préparation des options ─────────────────────────────
-    ref_options = _unique(df, "Reference area")
-    freq_options = _unique(df, "Frequency")
-    type_options = _unique(df, "Type")
-    basket_options = _unique(df, "Basket")
-    unit_options = _unique(df, "Unit")
+    iso_options = [""] + sorted(df_filter["iso_a3"].unique())
+    cur_options = [""] + sorted(df_filter["currency_code"].unique())
+    name_options = [""] + sorted(df_filter["name"].unique())
 
-    for k in ("ref_sel", "freq_sel", "type_sel", "basket_sel", "unit_sel"):
-        st.session_state.setdefault(k, [])
+    c1, c2, c3 = st.columns([1, 1, 2])
+    with c1:
+        iso_sel = st.selectbox("ISO Code", iso_options, index=iso_options.index(st.session_state.iso_sel) if st.session_state.iso_sel in iso_options else 0)
+        if iso_sel != st.session_state.iso_sel:
+            st.session_state.iso_sel = iso_sel
+            st.rerun()
+    with c2:
+        cur_sel = st.selectbox("Currency Code", cur_options, index=cur_options.index(st.session_state.cur_sel) if st.session_state.cur_sel in cur_options else 0)
+        if cur_sel != st.session_state.cur_sel:
+            st.session_state.cur_sel = cur_sel
+            st.rerun()
+    with c3:
+        name_sel = st.selectbox("Country", name_options, index=name_options.index(st.session_state.name_sel) if st.session_state.name_sel in name_options else 0)
+        if name_sel != st.session_state.name_sel:
+            st.session_state.name_sel = name_sel
+            st.rerun()
 
-    def multiselect_with_all(label, options, key, btn_key):
-        col1, col2 = st.columns([5, 1])
-        with col1:
-            sel = st.multiselect(label, options, default=st.session_state[key], key=f"{key}_box")
-        with col2:
-            if st.button("✓ All", key=btn_key):
-                st.session_state[key] = options.copy()
-                st.rerun()
-        return sel
-
-    ref_sel = multiselect_with_all("Reference Area", ref_options, "ref_sel", "ref_all")
-    freq_sel = multiselect_with_all("Frequency", freq_options, "freq_sel", "freq_all")
-    type_sel = multiselect_with_all("Type", type_options, "type_sel", "type_all")
-    basket_sel = st.multiselect("Basket", basket_options, default=st.session_state.basket_sel, key="basket_sel_box")
-    unit_sel = st.multiselect("Unit", unit_options, default=st.session_state.unit_sel, key="unit_sel_box")
-    if st.button("✓ All Units", key="unit_all"):
-        st.session_state.unit_sel = unit_options.copy()
+    if st.button("🔁 Reset identifiers"):
+        st.session_state.iso_sel = ""
+        st.session_state.cur_sel = ""
+        st.session_state.name_sel = ""
         st.rerun()
 
-    # ── Dates dynamiques (année → mois → jour) ───────────────
-    meta_cols = ["Dataflow ID", "Timeseries Key", "Frequency", "Type", "Basket", "Reference area", "Unit"]
-    raw_date_cols = [c for c in df.columns if c not in meta_cols]
+    iso, currency, country = st.session_state.iso_sel, st.session_state.cur_sel, st.session_state.name_sel
 
-    try:
-        parsed_dates = pd.to_datetime(raw_date_cols, format="%Y-%m-%d", errors="coerce")
-        date_map = {d.strftime("%Y-%m-%d"): d for d in parsed_dates if not pd.isna(d)}
-    except Exception:
-        st.warning("⚠ Impossible d'interpréter les colonnes de dates.")
-        return
+    with st.spinner("📊 Loading Big Mac data..."):
+        st.markdown("#### 2 – Select parameters")
+        big_mac_df = load_big_mac_cached()
+        big_mac_df.columns = [col if col else "empty_column" for col in big_mac_df.columns]
+        numeric_cols = [c for c in big_mac_df.columns if c not in ["date", "iso_a3", "currency_code", "name", "empty_column"] and big_mac_df[c].dtype != object]
+        select_all = st.checkbox("Select ALL parameters", value=False)
+        vars_sel = st.multiselect("Parameters", numeric_cols, default=(numeric_cols if select_all else numeric_cols[:2]))
 
-    df_dates = pd.DataFrame({"col": list(date_map.keys()), "dt": list(date_map.values())})
-    df_dates["year"] = df_dates["dt"].dt.year.astype(str)
-    df_dates["month"] = df_dates["dt"].dt.month.astype(str).str.zfill(2)
-    df_dates["day"] = df_dates["dt"].dt.day.astype(str).str.zfill(2)
+        st.markdown("#### 3 – Select date")
+        data_filtered = big_mac_df.copy()
+        if iso:
+            data_filtered = data_filtered[data_filtered["iso_a3"] == iso]
+        if currency:
+            data_filtered = data_filtered[data_filtered["currency_code"] == currency]
+        if country:
+            data_filtered = data_filtered[data_filtered["name"] == country]
 
-    st.markdown("#### 2 – Select date")
-    year_sel = st.selectbox("Year", options=["All"] + sorted(df_dates["year"].unique()), index=0)
-    if year_sel == "All":
-        month_options = sorted(df_dates["month"].unique())
-    else:
-        month_options = sorted(df_dates[df_dates["year"] == year_sel]["month"].unique())
+        years = sorted(data_filtered["date"].dt.year.unique())
+        year = st.selectbox("Year", ["All"] + [str(y) for y in years])
+        months = sorted(data_filtered[data_filtered["date"].dt.year == int(year)]["date"].dt.month.unique()) if year != "All" else sorted(data_filtered["date"].dt.month.unique())
+        month = st.selectbox("Month", ["All"] + [str(m) for m in months])
+        days = sorted(data_filtered[(data_filtered["date"].dt.year == int(year)) & (data_filtered["date"].dt.month == int(month))]["date"].dt.day.unique()) if (month != "All" and year != "All") else sorted(data_filtered["date"].dt.day.unique())
+        day = st.selectbox("Day", ["All"] + [str(d) for d in days])
 
-    month_sel = st.selectbox("Month", options=["All"] + month_options, index=0)
-    if month_sel == "All":
-        day_options = sorted(df_dates[(df_dates["year"] == year_sel) if year_sel != "All" else slice(None)]["day"].unique())
-    else:
-        day_options = sorted(df_dates[
-            (df_dates["year"] == year_sel if year_sel != "All" else True) &
-            (df_dates["month"] == month_sel)
-        ]["day"].unique())
+        st.markdown("#### 4 – Results")
+        res = filter_big_mac(
+            iso=iso or None,
+            currency=currency or None,
+            name=country or None,
+            year=None if year == "All" else int(year),
+            month=None if month == "All" else int(month),
+            day=None if day == "All" else int(day),
+            variables=vars_sel,
+        )
+        res = res.loc[:, res.columns != "empty_column"]
+        res["date"] = res["date"].dt.date
+        res_display = res.reset_index(drop=True)
+        res_display.index += 1
+        res_display.index.name = "Numéro de ligne"
 
-    day_sel = st.selectbox("Day", options=["All"] + day_options, index=0)
+    st.success(f"{len(res_display)} rows selected.")
+    show_all = st.checkbox("Show all rows", value=False)
+    st.dataframe(res_display if show_all else res_display.head(10), use_container_width=True)
 
-    mask = pd.Series(True, index=df_dates.index)
-    if year_sel != "All":
-        mask &= df_dates["year"] == year_sel
-    if month_sel != "All":
-        mask &= df_dates["month"] == month_sel
-    if day_sel != "All":
-        mask &= df_dates["day"] == day_sel
-
-    final_dates = df_dates[mask]["col"].tolist()
-
-    # ── Filtrage et affichage ───────────────────────────────
-    filters = {
-        "Reference area": ref_sel or ref_options,
-        "Frequency": freq_sel or freq_options,
-        "Type": type_sel or type_options,
-        "Basket": basket_sel or basket_options,
-        "Unit": unit_sel or unit_options,
-    }
-
-    filtered = filter_bis_data(df, filters)
-
-    st.markdown("#### 3 – Results")
-    show_cols = ["Reference area", "Frequency", "Type", "Basket", "Unit"] + final_dates
-    to_show = filtered[show_cols] if final_dates else filtered[show_cols[:5]]
-
-    st.success(f"{len(to_show)} rows selected.")
-    st.dataframe(
-        to_show if st.checkbox("Show all rows", value=False) else to_show.head(10),
-        use_container_width=True,
-    )
-
-    # ── Export CSV ───────────────────────────────────────────
-    safe_ref = ref_sel[0].replace(" ", "_") if ref_sel else "bis_reer_filtered"
     st.download_button(
-        "📥 Download CSV",
-        data=to_show.to_csv(index=False).encode("utf-8"),
-        file_name=f"{safe_ref}.csv",
+        "Download CSV",
+        res_display.to_csv(index=False).encode(),
+        file_name=f"big_mac_{iso or currency or country}.csv",
         mime="text/csv",
-    )
+    )  
