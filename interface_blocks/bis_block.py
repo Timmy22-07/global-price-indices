@@ -1,6 +1,7 @@
-# interface_blocks/bis_block.py – v2025-07-08 corrigé
+# interface_blocks/bis_block.py – v2025-07-08 corrigé et sécurisé
 # ---------------------------------------------------------------------
 # • Bloc interface BIS – REER, compatible fusion intelligente
+# • Corrige bug lié à ref.replace(...) si valeur absente
 # ---------------------------------------------------------------------
 
 import streamlit as st
@@ -18,13 +19,13 @@ def display_bis_block():
 
     # Interface de sélection (métadonnées)
     c1, c2, c3 = st.columns(3)
-    ref = c1.selectbox("Reference Area", opts["Reference area"])
-    freq = c2.selectbox("Frequency", opts["Frequency"])
-    type_ = c3.selectbox("Type", opts["Type"])
+    ref = c1.selectbox("Reference Area", opts.get("Reference area", []))
+    freq = c2.selectbox("Frequency", opts.get("Frequency", []))
+    type_ = c3.selectbox("Type", opts.get("Type", []))
 
     c4, c5 = st.columns(2)
-    basket = c4.selectbox("Basket", opts["Basket"])
-    unit = c5.selectbox("Unit", opts["Unit"])
+    basket = c4.selectbox("Basket", opts.get("Basket", []))
+    unit = c5.selectbox("Unit", opts.get("Unit", []))
 
     # Sélection des colonnes de dates disponibles
     date_cols = [c for c in df_bis.columns if c not in [
@@ -52,9 +53,11 @@ def display_bis_block():
     show_all = st.checkbox("Show all rows", value=False)
     st.dataframe(to_show if show_all else to_show.head(10), use_container_width=True)
 
+    # Génération sécurisée du nom de fichier
+    safe_ref = ref.replace(" ", "_") if isinstance(ref, str) else "bis_reer"
     st.download_button(
-        "Download CSV",
-        to_show.to_csv(index=False).encode(),
-        file_name=f"bis_reer_{ref.replace(' ', '_')}.csv",
+        "📥 Download CSV",
+        data=to_show.to_csv(index=False).encode("utf-8"),
+        file_name=f"bis_reer_{safe_ref}.csv",
         mime="text/csv"
     )

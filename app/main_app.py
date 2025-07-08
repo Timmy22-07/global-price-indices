@@ -82,5 +82,3 @@ with st.spinner("Chargement des données..."):
     elif source == "Numbeo – Cost of Living + PPP (Purchasing Power Parity)":
         display_numbeo_block()
 
-# ⵀ Message de confirmation final
-st.info("✅ Application chargée avec succès. Sélectionnez une source dans la barre latérale pour commencer.")
