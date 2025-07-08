@@ -1,18 +1,19 @@
-# core/bis_loader.py – v2025-07-08 merge_by_timeseries_key
-# ---------------------------------------------------------------------
+# core/bis_loader.py – v2025-07-09 clean_cols
+# ------------------------------------------------------------
 # BIS – Real Effective Exchange Rates (REER)
-# • Fusionne plusieurs CSV sans dupliquer les colonnes de métadonnées
-# • Options dynamiques : Frequency, Type, Basket, Unit, Reference area
-# • Filtrage basé sur les choix utilisateur
-# ---------------------------------------------------------------------
+# • Fusionne les CSV présents dans data/raw/bis_reer
+# • Nettoie / standardise les noms de colonnes
+# • Fournit options de filtre + fonction de filtrage
+# ------------------------------------------------------------
 
 from pathlib import Path
 import pandas as pd
+import re
 
 # Dossier contenant les fichiers CSV REER
 DATA_DIR = Path("data/raw/bis_reer")
 
-# Colonnes de métadonnées (ne doivent pas être répétées)
+# Colonnes “méta” (ne doivent pas être traitées comme dates)
 META_COLS = [
     "Dataflow ID",
     "Timeseries Key",
@@ -23,21 +24,35 @@ META_COLS = [
     "Unit",
 ]
 
-# ------------------------------------------------------------------ #
-# 1. Chargement + fusion intelligente                                #
-# ------------------------------------------------------------------ #
+# ─────────────────────────────────────────────────────────────
+# 1. Outil de nettoyage de colonnes
+# ─────────────────────────────────────────────────────────────
+def _clean_columns(cols: list[str]) -> list[str]:
+    """Normalise les noms de colonnes (strip, espaces multiples, casse)."""
+    std = []
+    for c in cols:
+        # Supprime espaces insécables + multiples
+        c = re.sub(r"\s+", " ", c.replace("\u00A0", " ")).strip()
+        # Harmonise quelques alias
+        if c.lower() in {"reference area", "reference-area"}:
+            c = "Reference area"
+        elif c.lower() in {"dataflowid", "dataflow id"}:
+            c = "Dataflow ID"
+        elif c.lower() in {"timeseries key", "timeserieskey"}:
+            c = "Timeseries Key"
+        std.append(c)
+    return std
+
+# ─────────────────────────────────────────────────────────────
+# 2. Chargement + fusion intelligente
+# ─────────────────────────────────────────────────────────────
 def load_bis_reer_data() -> pd.DataFrame:
-    """
-    Charge et fusionne tous les fichiers CSV BIS-REER.
-
-    • Une seule ligne par « Timeseries Key »
-    • Les colonnes de dates sont agrégées (aucun écrasement)
-    """
-    files = list(DATA_DIR.glob("*.csv"))
+    """Charge et fusionne tous les fichiers CSV BIS-REER présents dans DATA_DIR."""
+    files = sorted(DATA_DIR.glob("*.csv"))
     if not files:
-        return pd.DataFrame(columns=META_COLS)  # évite les crashs
+        # DataFrame vide conforme
+        return pd.DataFrame(columns=META_COLS)
 
-    # Dictionnaire { timeseries_key : Series (meta + dates) }
     merged: dict[str, pd.Series] = {}
 
     for csv_path in files:
@@ -47,55 +62,52 @@ def load_bis_reer_data() -> pd.DataFrame:
             print(f"❌ Erreur lecture {csv_path.name} : {err}")
             continue
 
-        # Séparation méta + dates
+        # Nettoie / normalise les noms de colonnes
+        df.columns = _clean_columns(df.columns.tolist())
+
+        # Sépare méta & dates dynamiquement
         date_cols = [c for c in df.columns if c not in META_COLS]
+
         for _, row in df.iterrows():
             key = row["Timeseries Key"]
-
-            # Séries méta (une seule fois) + valeurs dates
             meta_part = row[META_COLS]
             date_part = row[date_cols]
 
             if key not in merged:
                 merged[key] = pd.concat([meta_part, date_part])
             else:
-                # Ajoute seulement les nouvelles dates
-                merged[key] = pd.concat([merged[key], date_part], axis=0)
+                # Ajoute uniquement les nouvelles dates
+                existing_dates = merged[key].index.difference(META_COLS)
+                new_dates = [d for d in date_part.index if d not in existing_dates]
+                merged[key] = pd.concat([merged[key], date_part[new_dates]])
 
-    # Repassage en DataFrame
     merged_df = pd.DataFrame(merged).T.reset_index(drop=True)
 
-    # Ré-ordonne : méta d’abord puis dates (triées chronologiquement)
+    # Ré-ordre colonnes : méta puis dates triées
     meta_existing = [c for c in META_COLS if c in merged_df.columns]
     date_existing = sorted([c for c in merged_df.columns if c not in meta_existing])
-    merged_df = merged_df[meta_existing + date_existing]
+    return merged_df[meta_existing + date_existing]
 
-    return merged_df
-
-# ------------------------------------------------------------------ #
-# 2. Extraction des options de filtre                                #
-# ------------------------------------------------------------------ #
+# ─────────────────────────────────────────────────────────────
+# 3. Extraction des options de filtre
+# ─────────────────────────────────────────────────────────────
 def get_filter_options(df: pd.DataFrame) -> dict:
-    """Retourne un dictionnaire des options possibles pour chaque filtre."""
+    """Retourne {colonne : liste triée des valeurs uniques}. Toujours non-nul si la colonne existe."""
     return {
-        "Frequency": sorted(df["Frequency"].dropna().unique()) if "Frequency" in df.columns else [],
-        "Type":       sorted(df["Type"].dropna().unique())       if "Type"       in df.columns else [],
-        "Basket":     sorted(df["Basket"].dropna().unique())     if "Basket"     in df.columns else [],
-        "Unit":       sorted(df["Unit"].dropna().unique())       if "Unit"       in df.columns else [],
-        "Reference area": sorted(df["Reference area"].dropna().unique()) if "Reference area" in df.columns else [],
-        # Les colonnes de dates sont laissées à la sélection libre dans le bloc UI
+        col: sorted(df[col].dropna().unique().tolist()) if col in df.columns else []
+        for col in ["Frequency", "Type", "Basket", "Unit", "Reference area"]
     }
 
-# ------------------------------------------------------------------ #
-# 3. Filtrage selon les paramètres sélectionnés                      #
-# ------------------------------------------------------------------ #
-def filter_bis_data(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
+# ─────────────────────────────────────────────────────────────
+# 4. Filtrage selon les sélections utilisateur
+# ─────────────────────────────────────────────────────────────
+def filter_bis_data(df: pd.DataFrame, selections: dict) -> pd.DataFrame:
     """
-    Filtre les données selon un dict :
-      { "Frequency": [...], "Type": [...], ... }
+    Filtre le DataFrame selon un dict {colonne: [valeurs retenues]}.
+    Si liste vide → on garde tout.
     """
     out = df.copy()
-    for col, values in filters.items():
-        if values and col in out.columns:
-            out = out[out[col].isin(values)]
+    for col, vals in selections.items():
+        if vals and col in out.columns:
+            out = out[out[col].isin(vals)]
     return out.reset_index(drop=True)
