@@ -14,8 +14,8 @@ import streamlit as st
 sys.path.append(os.path.abspath(os.path.join(Path(__file__).parent, "..")))
 
 # ⵀ Configuration
-st.set_page_config(page_title="Global Price Indices", layout="wide")
-st.title("🌐 Global Price Indices")
+st.set_page_config(page_title="Global Indices", layout="wide")
+st.title("🌐 Global Indices")
 
 # ⵀ Onglet Accueil + Config
 from core.welcome import display_welcome_tab
@@ -75,11 +75,11 @@ with st.spinner("Chargement des données..."):
         display_bis_block()
     elif source == "World Bank – CPI (Consumer Price Index)":
         display_wb_cpi_block()
-    elif source == "World Bank – ICP Database":
+    elif source == "World Bank – ICP (International Comparison Program) Database":
         display_wb_icp_block()
     elif source == "Penn World Table":
         display_penn_block()
-    elif source == "Numbeo – Cost of Living + PPP":
+    elif source == "Numbeo – Cost of Living + PPP (Purchasing Power Parity)":
         display_numbeo_block()
 
 # ⵀ Message de confirmation final
